@@ -1,0 +1,51 @@
+
+
+# Introduction
+
+# Data description
+
+- 3 ACM, 3 CTRL, 4 (?) QC - those with largest differences on caffeine.
+
+
+# Data pre-processing
+
+## General quality assessment
+
+- BPC and heatmaps to evaluate LC performance.
+- EIC of internal standards.
+
+## Chromatographic peak detection
+
+## Retention time alignment
+
+## Correspondence
+
+## Gap filling
+
+# Data normalization
+
+- Evaluation on IS.
+
+# Identification of interesting features
+
+- Pre-filtering.
+- Differential abundance.
+
+Task: sensitivity analysis: with/without normalization. with/without
+pre-filtering.
+
+
+# Annotation
+
+- Different levels of annotation.
+- Just m/z (mass).
+- m/z and retention time.
+- MS/MS spectra + public repository.
+- MS/MS spectra + retention time.
+
+# Summary
+
+# Session information
+
+# References
+
