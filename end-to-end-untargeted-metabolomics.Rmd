@@ -1,0 +1,94 @@
+
+
+# Introduction
+
+# Data description
+
+The data represents a subset of samples from a larger experiment and consists of
+in total 10 mzML files with 3 samples from individuals with a cardiovascular
+disease, 3 samples from healthy donors and 4 QC samples (pool of all samples of
+the experiment). The MS data has been restricted to a retention time range from
+20 to 230 seconds and an m/z range from 0 to 500.
+
+
+
+# Data pre-processing
+
+The *mzML* files with the raw MS data are located within the *data/mzML* folder
+of this repository.
+
+```{r}
+library(xcms)
+library(RColorBrewer)
+library(pander)
+
+#' read the sample descriptions from a text file
+pd <- read.table("data/phenodata.txt", header = TRUE, sep = "\t")
+
+#' Import the data
+data <- readMSData(paste0("data/mzML/", pd$mzML_file),
+                   pdata = new("AnnotatedDataFrame", pd),
+                   mode = "onDisk")
+```
+
+```{r phenodata, results = "asis"}
+pandoc.table(pData(data), style = "rmarkdown",
+             caption = "Samples from the data set.")
+```
+
+```{r define-colors}
+col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
+names(col_phenotype) <- c("CTR", "CVD", "QC")
+```
+
+## General quality assessment
+
+```{r bpc}
+bpc <- chromatogram(data, aggregationFun = "max")
+```
+
+```{r}
+plot(bpc, col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+```
+
+- BPC and heatmaps to evaluate LC performance.
+- EIC of internal standards.
+
+## Chromatographic peak detection
+
+## Retention time alignment
+
+## Correspondence
+
+## Gap filling
+
+# Data normalization
+
+- Evaluation on IS.
+
+# Identification of interesting features
+
+- Pre-filtering.
+- Differential abundance.
+
+Task: sensitivity analysis: with/without normalization. with/without
+pre-filtering.
+
+
+# Annotation
+
+- Different levels of annotation.
+- Just m/z (mass).
+- m/z and retention time.
+- MS/MS spectra + public repository.
+- MS/MS spectra + retention time.
+
+# Summary
+
+# Session information
+
+# References
+
