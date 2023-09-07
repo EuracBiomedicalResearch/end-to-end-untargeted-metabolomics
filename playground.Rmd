@@ -1,0 +1,319 @@
+# Testing code and evaluating data
+
+This file contains some code to test how to best analyze the data from the
+end-to-end workflow. There's not much of description and also no diagnostic
+plots, variance evaluations and visualizations.
+
+## Pre-processing
+
+```{r}
+library(xcms)
+library(MsExperiment)
+library(Spectra)
+library(RColorBrewer)
+register(MulticoreParam(6))
+
+pd <- data.frame(
+    mzML = c("20180622_QC4_POS.mzML", "20180622_ARVD 15_POS.mzML",
+             "20180622_CTR21_POS.mzML", "20180622_QC7_POS.mzML",
+             "20180622_CTR25_POS.mzML", "20180622_ARVD 8_POS.mzML",
+             "20180622_QC8_POS.mzML", "20180622_CTR22_POS.mzML",
+             "20180622_ARVD 5_POS.mzML", "20180622_QC9_POS.mzML"),
+    group = c("QC", "CVD", "CTR", "QC", "CTR", "CVD", "QC", "CTR", "CVD", "QC"),
+    inj_idx = c(45, 50, 51, 78, 82, 85, 89, 93, 94, 99))
+
+mse <- readMsExperiment(paste0("data/mzML_orig/", pd$mzML), sampleData = pd)
+
+col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
+names(col_phenotype) <- c("CTR", "CVD", "QC")
+col_sample <- col_phenotype[sampleData(mse)$group]
+
+bpc <- chromatogram(mse, aggregationFun = "max")
+plot(bpc, col = paste0(col_sample, 80), lwd = 2)
+
+mse <- filterRt(mse, c(10, 240))
+bpc <- chromatogram(mse, aggregationFun = "max")
+plot(bpc, col = paste0(col_sample, 80), lwd = 2)
+
+cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
+xmse <- findChromPeaks(mse, param = cwp, chunkSize = 5)
+
+rcp <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
+                                  minProp = 3/4)
+xmse <- refineChromPeaks(xmse, param = rcp, chunkSize = 5)
+
+pdp <- PeakDensityParam(sampleGroups = sampleData(xmse)$group,
+                        minFraction = 0.75,
+                        binSize = 0.01,
+                        bw = 2)
+xmse <- groupChromPeaks(xmse, param = pdp)
+
+pgp <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.3,
+                       subsetAdjust = "average",
+                       subset = which(sampleData(xmse)$group == "QC"))
+xmse <- adjustRtime(xmse, param = pgp)
+plotAdjustedRtime(xmse)
+
+pdp <- PeakDensityParam(sampleGroups = sampleData(xmse)$group,
+                        minFraction = 1/3, binSize = 0.015, bw = 2.3)
+xmse <- groupChromPeaks(xmse, param = pdp)
+
+xmse <- fillChromPeaks(xmse, param = ChromPeakAreaParam(), chunkSize = 5)
+
+library(SummarizedExperiment)
+se <- quantify(xmse, method = "sum", filled = TRUE)
+
+## impute
+set.seed(123)
+assays(se)$imputed <- imputeRowMinRand(assay(se), method = "from_to",
+                                       min_fraction_from = 1/2,
+                                       min_fraction = 1)
+
+```
+
+## Data visualization
+
+For now only a PCA is created - might need also other plots.
+
+```{r}
+library(CompMetaboTools)
+pc <- prcomp(t(log2(assay(se, "imputed"))),
+             scale = FALSE, center = TRUE)
+par(mfrow = c(1, 2))
+plot_pca(pc, bg = paste0(col_sample, 80), pc_x = 1, pc_y = 2,
+         main = "raw data", pch = 21, col = "#00000080")
+legend("topleft", col = col_phenotype, legend = names(col_phenotype),
+       pch = 16, cex = 0.4)
+plot_pca(pc, bg = paste0(col_sample, 80), pc_x = 3, pc_y = 4,
+         main = "raw data", pch = 21, col = "#00000080")
+```
+
+## Data normalization
+
+Maybe run median scaling here.
+
+## Differential abundance analysis
+
+Use *limma* for differential abundance analysis.
+
+```{r}
+library(limma)
+
+se_qc <- se[, se$group == "QC"]
+se <- se[, se$group != "QC"]
+
+dratios <- apply(
+    log2(assay(se_qc, "imputed")), 1, sd, na.rm = TRUE) /
+    apply(log2(assay(se, "imputed")), 1, sd, na.rm = TRUE)
+
+plot(density(dratios, na.rm = TRUE), xlab = "D-ratio",
+     main = "Distribution of D-ratios")
+abline(v = 0.5, col = "red", lty = 2)
+
+se <- se[which(dratios < 0.5), ]
+keep <- moreAreValidThan(assay(se, "raw"), f = se$group, prop = 0.5)
+se <- se[keep, ]
+
+pheno <- factor(se$group, levels = c("CTR", "CVD"))
+dsgn <- model.matrix(~ 0 + pheno)
+fit <- limma::lmFit(log2(assay(se, "imputed")), design = dsgn)
+
+contr_mat <- limma::makeContrasts(
+    CVDvsCTR = phenoCVD - phenoCTR,
+    levels = dsgn
+)
+fit <- limma::contrasts.fit(fit, contrasts = contr_mat)
+fit <- limma::eBayes(fit)
+
+rowData(se)$coef <- fit$coefficient[, 1]
+rowData(se)$pvalue <- fit$p.value[, 1]
+rowData(se)$adjp <- p.adjust(fit$p.value[, 1], method = "BH")
+
+save(se, file = "data/se.RData")
+plot(rowData(se)$coef, -log10(rowData(se)$adjp))
+abline(h = -log10(c(0.05, 0.1, 0.35)))
+
+res <- rowData(se)[rowData(se)$adjp < 0.35, ]
+res <- res[order(res$pvalue), ]
+res$feature_id <- rownames(res)
+
+res[, c("mzmed", "rtmed", "adjp", "coef")] |> as.data.frame()
+
+```
+
+## Compound annotation
+
+### Based on m/z values of features
+
+Match m/z values against theoretical m/z values for compounds' adducts.
+
+```{r}
+library(MetaboAnnotation)
+library(AnnotationHub)
+ah <- AnnotationHub()
+
+mb <- ah[["AH107049"]]
+
+mz_mtch <- matchValues(
+    query = res, target = compounds(mb), mzColname = "mzmed",
+    param = Mass2MzParam(adducts = c("[M+H]+", "[M+Na]+")))
+```
+
+Add results to the table.
+
+```{r}
+res$mz_names <- unlist(lapply(mz_mtch, function(z)
+    paste(unique(z$target_name), collapse = "; ")))
+res$mz_adduct <- unlist(lapply(mz_mtch, function(z)
+    paste(unique(z$adduct), collapse = "; ")))
+```
+
+mz 138.0546: Trigonelline (found in coffee)
+mz 195.0877: Caffeine
+
+Check which features could be isotopes: need also the intensities of the
+features though. Median intensity?
+
+```{r}
+#' Get the max intensities for each feature (chrom peak) for the
+#' sample with the highest overall signal.
+eics <- featureChromatograms(xmse, features = rownames(res))
+#' identify the sample with the highest max signal
+max_ints <- lapply(seq_len(ncol(eics)), function(i) {
+    vapply(eics[, i], function(z) max(intensity(z), na.rm = TRUE), numeric(1))
+})
+max_ints <- do.call(cbind, max_ints)
+max_ints[!is.finite(max_ints)] <- 0
+res$intmax <- max_ints[, which.max(colSums(max_ints))]
+
+#' Alternative: calculate the median (integrated!) signal across samples
+#' for each feature
+res$intmed <- rowMedians(assay(se)[res$feature_id, ], na.rm = TRUE)
+
+plot(log2(res$intmed), log2(res$intmax))
+grid()
+abline(0, 1)
+#' so, they are correlated.
+
+par(mfrow = c(1, 2))
+plot(res$mzmed, res$intmed, type = "h")
+plot(res$mzmed, res$intmax, type = "h")
+
+## TODO: order x if needed.
+library(MetaboCoreUtils)
+m <- res[, c("mzmed", "intmed")] |> as.matrix()
+m <- m[order(m[, "mzmed"]), ]
+isotopologues(m, ppm = 50)
+isotopologues(res[, c("mzmed", "intmax")], ppm = 0, tolerance = 0.01)
+#' nothing for either one.
+
+```
+
+```{r}
+ms1 <- featureSpectra(xmse, msLevel = 1L, features = rownames(res)[1])
+```
+
+Isotope search did not find anything.
+
+### Based on m/z values and retention times from previously measured standards
+
+Match using our internal standards library.
+
+```{r}
+#' load the data.frame with retention times.
+
+```
+
+### Using fragment (MS/MS) spectra
+
+Load MS/MS data for the present data set.
+
+```{r}
+## include the LC-MS/MS data...
+fls <- c("20210129_ARVD_QC_CE20_HighSensitivity_POS.mzML",
+         "20210129_ARVD_QC_CE30_HighSensitivity_POS.mzML",
+         "20210129_ARVD_QC_CE40_HighSensitivity_POS.mzML",
+         "20210129_ARVD_QC_MS_HighSensitivity_POS_1.mzML"
+         )
+ms2 <- filterMsLevel(Spectra(paste0("data/mzML_LCMSMS/", fls)), 2L)
+
+#' Remove peaks above precursor, including precursor.
+ms2 <- filterPrecursorPeaks(ms2, ppm = 0, tolerance = 0.05, mz = ">=")
+ms2 <- filterIntensity(ms2, intensity = function(z)
+    z > max(z, na.rm = TRUE) * 0.01)
+ms2 <- ms2[lengths(ms2) >= 2]
+
+int_sum <- function(x, ...) {
+    x[, "intensity"] <- x[, "intensity"] / sum(x[, "intensity"], na.rm = TRUE)
+    x
+}
+ms2 <- addProcessing(ms2, int_sum)
+
+#' Find MS2 spectra matching the m/z and retention times of our features
+ms2match <- matchValues(res, ms2, param = MzRtParam(ppm = 10, toleranceRt = 5),
+                        mzColname = c("mzmed", "precursorMz"),
+                        rtColname = c("rtmed", "rtime"))
+
+res_ms2 <- target(ms2match)[targetIndex(ms2match)]
+res_ms2$feature_id <- query(ms2match)$feature_id[queryIndex(ms2match)]
+
+```
+
+From which data files are these MS/MS spectra?
+
+```{r}
+dataStorage(target(ms2match))[whichTarget(ms2match)] |>
+    basename() |>
+    table()
+```
+
+Match these MS2 spectra with fragment spectra in MassBank.
+
+```{r}
+mbs <- Spectra(mb)
+mbs <- filterIntensity(mbs, intensity = function(z)
+    z > max(z, na.rm = TRUE) * 0.01)
+mbs <- mbs[lengths(mbs) >= 2]
+mbs <- addProcessing(mbs, int_sum)
+
+#' Identify MassBank spectra with a similarity >= 0.7
+register(SerialParam())
+ms2mb <- matchSpectra(res_ms2, mbs, param = CompareSpectraParam(ppm = 50))
+
+tmp <- ms2mb[whichQuery(ms2mb)]
+tmp <- pruneTarget(tmp)
+
+#' From which mzML file are these?
+dataOrigin(query(tmp)) |>
+    basename() |>
+    table()
+
+#' It's all caffeine!
+tmp$target_name
+plotSpectraMirror(tmp[1])
+plotSpectraMirror(tmp[2])
+plotSpectraMirror(tmp[3])
+plotSpectraMirror(tmp[4])
+plotSpectraMirror(tmp[5])
+plotSpectraMirror(tmp[6])
+
+tmp$rtime
+```
+
+What with the other MS2 spectra? what could they be? Maybe an ion different than
+[M+H]+?
+
+Retry without precursor m/z.
+
+```{r}
+res_ms2 <- setBackend(res_ms2, MsBackendMemory())
+res_ms2 <- applyProcessing(res_ms2)
+
+mbs <- setBackend(mbs, MsBackendMemory())
+mbs <- applyProcessing(mbs)
+
+ms2mb2 <- matchSpectra(
+    res_ms2, mbs, param = CompareSpectraParam(
+                      ppm = 50, requirePrecursor = FALSE))
+ms2mb2
+```
