@@ -8,27 +8,28 @@ The data represents a subset of samples from a larger experiment and consists of
 in total 10 mzML files with 3 samples from individuals with a cardiovascular
 disease, 3 samples from healthy donors and 4 QC samples (pool of all samples of
 the experiment). The MS data has been restricted to a retention time range from
-20 to 230 seconds and an m/z range from 0 to 500.
+20 to 230 seconds and an m/z range from 0 to 500. 
+
+NEEEDS UPDATE!
 
 
+# Data import
 
-# Data pre-processing
 
 The *mzML* files with the raw MS data are located within the *data/mzML* folder
-of this repository.
+of this repository. [ideally, they should be added and then downloaded from
+MassIVE].
 
 ```{r}
+library(MsExperiment)
 library(xcms)
 library(RColorBrewer)
 library(pander)
 
-#' read the sample descriptions from a text file
-pd <- read.table("data/phenodata.txt", header = TRUE, sep = "\t")
+#' read the sample descriptions from an xlsx sheet
+pd <- as.data.frame(read_xlsx("data/phenodata.xlsx"))
 
 #' Import the data
-data <- readMSData(paste0("data/mzML/", pd$mzML_file),
-                   pdata = new("AnnotatedDataFrame", pd),
-                   mode = "onDisk")
 ```
 
 ```{r phenodata, results = "asis"}
@@ -41,7 +42,7 @@ col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
 names(col_phenotype) <- c("CTR", "CVD", "QC")
 ```
 
-## General quality assessment
+# General quality assessment
 
 ```{r bpc}
 bpc <- chromatogram(data, aggregationFun = "max")
@@ -57,16 +58,40 @@ legend("topright", col = col_phenotype,
 - BPC and heatmaps to evaluate LC performance.
 - EIC of internal standards.
 
+```{r}
+bpcb <- bin(bpc)
+plot(bpcb)
+
+intmat <- do.call(cbind, lapply(bpcb, intensity))
+heatmap(intmat)
+```
+
+# Data pre-processing
+
 ## Chromatographic peak detection
+
+- run with the default settings, evaluate signal for e.g. serine.
+- re-run with adapted settings.
 
 ## Retention time alignment
 
+- use initial correspondence.
+- use subset alignment.
+
 ## Correspondence
+
+- use *bad* settings (check maybe xcmsTutorials for examples)
 
 ## Gap filling
 
+- compare signal for filled-in and detected signal for QC samples. is it
+  correlated?
+  
+
 # Data normalization
 
+- between sample normalization
+- maybe skip signal drift normalization
 - Evaluation on IS.
 
 # Identification of interesting features
