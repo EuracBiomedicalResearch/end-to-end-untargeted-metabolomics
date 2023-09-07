@@ -25,6 +25,7 @@ library(MsExperiment)
 library(xcms)
 library(RColorBrewer)
 library(pander)
+library(readxl)
 
 #' read the sample descriptions from an xlsx sheet
 pd <- as.data.frame(read_xlsx("data/phenodata.xlsx"))
