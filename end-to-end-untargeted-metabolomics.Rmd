@@ -197,7 +197,7 @@ serine_mz <- mass2mz(mass_serine, "[M+H]+")
 serine_mz <- serine_mz[1, 1]
 
 #' More refined XIC from QC samples 
-chr_serine <- (chromatogram(data[c(1,4,7,10)], rt = c(175, 186),
+chr_serine <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
                            mz = serine_mz + c(-0.05, 0.05),
                            aggregationFun = "max"))
 plot(chr_serine)
@@ -247,28 +247,54 @@ chromPeaks(default)
 cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
 chr_serine_test <- findChromPeaks(chr_serine, param= cwp)
 chromPeaks(chr_serine_test)
+plot(chr_serine_test)
 
 
-##' Here again test for multiple ions at once, works but again bc rtime is so different, can see super clearl
+##' Here again test for multiple ions at once, works but again bc rtime is so different, cannot see super clearly
 #' Evaluate signal for common ions
 #' use the previously build list of XIC for common ions 
+cwp <- CentWaveParam()
 defaultrun <- findChromPeaks(chr_list[[1]], param = cwp )
 chromPeaks(defaultrun)
 
-
+cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
 list_names <- row.names(well_known)
 for (i in 1:length(chr_list)) { 
   print(i)
   chr_names <- paste0("chr_" , list_names[i])
-  defaultrun <- findChromPeaks(chr_list[[i]], param = cwp )
+  batch_chr  <- findChromPeaks(chr_list[[i]], param = cwp )
   print(chr_names)
-  print(chromPeaks(defaultrun))
-  plot(defaultrun, main = chr_name)
+  print(chromPeaks(batch_chr))
+  plot(batch_chr, main = chr_name)
 }
 
 ```
 
 - re-run with adapted settings.
+```{r run find chrompeak on entire dataset}
+
+data <- findChromPeaks(data, param = cwp, chunkSize = 5)
+data
+
+#' Test if we find serine again 
+
+xic_serine <- chromatogram(data, mz = c(106.04, 106.06),
+                           rt = c(170, 186))
+chromPeaks(xic_serine) 
+plot(xic_serine)
+```
+
+- merge chromatographic peaks 
+
+```{r merging }
+mpp <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
+                                  minProp = 3/4) 
+data_pp <- refineChromPeaks(data_pp, param = mpp, chunkSize = 5)
+
+#' check how it went 
+#' if all good replace data by the merged data 
+#' 
+```
 
 ## Retention time alignment
 
