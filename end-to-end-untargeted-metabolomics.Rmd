@@ -31,7 +31,17 @@ library(readxl)
 pd <- as.data.frame(read_xlsx("data/phenodata.xlsx"))
 
 #' Import the data
+
+#' Massive data bank extraction but for now not. 
+MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML"
+
+#' register(MulticoreParam(6)) ask johannes about that
+data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file) ,sampleData = pd)
+data
+
 ```
+
+- highlights the importance to have a phenodata table 
 
 ```{r phenodata, results = "asis"}
 pandoc.table(pData(data), style = "rmarkdown",
@@ -43,10 +53,32 @@ col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
 names(col_phenotype) <- c("CTR", "CVD", "QC")
 ```
 
+## Set up parallel processing 
+```{r}
+#' Set up parallel processing using 2 cores
+if (.Platform$OS.type == "unix") {
+    register(bpstart(MulticoreParam(2)))
+} else {
+    register(bpstart(SnowParam(2)))
+}
+```
+
+The experimental data is now an MsExperiment object 
+- LC-MS data within that is stored as a spectra object within the MsExperiment object and can be accessed using Spectra() function 
+  - Each element in this spectra object is a spectrum - they are organised linearly and are all combined in the same spectra object one after the other (through rt and samples)
+
+- The MsExperiment object manages the linkage between samples and spectra 
+  - it's lenght is defined by the number of samples within the object 
+  
 # General quality assessment
 
 ```{r bpc}
 bpc <- chromatogram(data, aggregationFun = "max")
+plot(bpc, col = paste0(col_sample, 80), lwd = 2)
+
+fdata <- filterRt(data, c(10, 240))
+bpc <- chromatogram(fdata, aggregationFun = "max")
+plot(bpc, col = paste0(col_sample, 80), lwd = 2)
 ```
 
 ```{r}
