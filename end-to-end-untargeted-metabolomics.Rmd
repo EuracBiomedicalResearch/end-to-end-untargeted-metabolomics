@@ -29,6 +29,7 @@ library(RColorBrewer)
 library(pander)
 library(readxl)
 library(MetaboCoreUtils)
+library(pheatmap)
 
 #' read the sample descriptions from an xlsx sheet
 pd <- as.data.frame(read_xlsx("data/phenodata.xlsx"))
@@ -46,13 +47,22 @@ data
 
 - highlights the importance to have a phenodata table 
 
-```{r phenodata, eval=FALSE, echo=TRUE}
-#this  thing does not work
-pandoc.table(pData(data), style = "rmarkdown",
-             caption = "Samples from the data set.")
+There is 'r length(sampleData(data))' samples in this dataset.Here are some 
+abbreviation necessary to properly read the phenodata table.
+- Injection Index:
+- QC: Quality control sample 
+- CVD: 
+- CTR: 
+
+```{r phenodata, echo=FALSE}
+data |>
+  sampleData() |> 
+  as.data.frame() |>
+  pandoc.table(style = "rmarkdown", caption = "Samples from the data set.")
 ```
 
 ```{r define-colors}
+#' Define colors for the groups.
 col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
 names(col_phenotype) <- c("CTR", "CVD", "QC")
 
@@ -119,12 +129,14 @@ To generate general data overview we can:
 ## BPC and heatmaps to evaluate LC performance.
 
 ```{r bpc}
+
 bpc <- chromatogram(data, aggregationFun = "max")
 plot(bpc, col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 
+#' Filter the data based on retention time, allows to get smaller file size
 data <- filterRt(data, c(10, 240))
 bpc <- chromatogram(data, aggregationFun = "max")
 plot(bpc, col = paste0(col_phenotype[bpc$phenotype], 80))
@@ -139,7 +151,10 @@ bpcb <- bin(bpc)
 plot(bpcb)
 
 intmat <- do.call(cbind, lapply(bpcb, intensity))
-heatmap(intmat)
+simmat <- cor(intmat)
+pheatmap(simmat)
+#' improve this labelling
+#' 
 ```
 
 ## EIC of internal standards.
@@ -179,7 +194,7 @@ exspecQC <- data[c(1,4, 7,10)] |>
   filterRt(c(140,141))
 exspecQC
 
-plotSpectra(exspecQC[1:4])
+plotSpectra(exspecQC[1:4]) # here too many to show all, maybe talk what we want to show specifically 
 ```
 
 There were 'r length(exspec)' spectra measured in this one second within the entire datase and 'r length(exspecQC)' in our QC samples.
@@ -202,11 +217,32 @@ chr_serine <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
                            aggregationFun = "max"))
 plot(chr_serine)
 
-#' under here is test  to analyse multiple ions at the same time, however i am struggling a bit with the fact that they have a wide range of rtime and therefore make downstream analysis less clear for people. 
-#either need to be improve, change ions of interest or just do one ion by one. the code works though 
+#' Also show another XIC that is less obvious (glycine or something else that has 2 distinct peak)
 
-#' first create a data.frame that will store the compound of interest and their calculated ion mass
-well_known <- data.frame(row.names = c("serine", "glycine", "creatine", "glucose"))
+mass_ <- calculateMass("C3H7NO3")
+_mz <- mass2mz(mass_, "[M+H]+")
+_mz <- _mz[1, 1]
+
+#' More refined XIC from QC samples 
+chr_ <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
+                           mz = _mz + c(-0.05, 0.05),
+                           aggregationFun = "max"))
+plot(chr_)
+
+# put all samples, but keep the colours
+
+
+#' under here is test  to analyse multiple ions at the same time, however i am 
+#' struggling a bit with the fact that they have a wide range of rtime and 
+#' therefore make downstream analysis less clear for people. 
+#' either need to be improve, change ions of interest or just do one ion by one. 
+#' the code works though 
+
+#' first create a data.frame that will store the compound of interest and their
+#'  calculated ion mass
+well_known <- data.frame(
+  row.names = c("serine", "glycine", "creatine", "glucose"))
+
 well_known$Formula <- c("C3H7NO3", "C2H5NO2", "C4H9N3O2", "C6H12O6")
 
 well_known$Mass <- calculateMass(well_known$Formula)
@@ -218,10 +254,12 @@ chr_list <- list()
 for (i in 1:length(well_known$mz)) {
   print(i)
   chr_names <- paste0("chr_" , list_names[i])
-  chr <- chromatogram(data[c(1,4,7,10)], rt=c(25, 185), mz = well_known[i,3] + c(-0.05, 0.05)) #
+  chr <- chromatogram(data[c(1,4,7,10)], rt=c(25, 185), 
+                      mz = well_known[i,3] + c(-0.05, 0.05)) 
   chr_list[[chr_names]] <-  chr
   plot(chr_list[[chr_names]], main = chr_names)
 }
+# sodium 
 
 ```
 
@@ -242,12 +280,16 @@ cwp <- CentWaveParam()
 default <- findChromPeaks(chr_serine, param= cwp)
 chromPeaks(default)
 
+#' do same with second chosen ion
 
 #' With more accurate parameters 
 cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
 chr_serine_test <- findChromPeaks(chr_serine, param= cwp)
 chromPeaks(chr_serine_test)
 plot(chr_serine_test)
+
+#' do same with second chosen ion
+#' 
 
 
 ##' Here again test for multiple ions at once, works but again bc rtime is so different, cannot see super clearly
@@ -268,37 +310,83 @@ for (i in 1:length(chr_list)) {
   plot(batch_chr, main = chr_names)
 }
 
+
 ```
 
 - re-run with adapted settings.
+
 ```{r run find chrompeak on entire dataset}
 
 data <- findChromPeaks(data, param = cwp, chunkSize = 5)
 data
 
 #' Test if we find serine again 
-
 xic_serine <- chromatogram(data, mz = c(106.04, 106.06),
                            rt = c(170, 186))
 chromPeaks(xic_serine) 
-plot(xic_serine)
+plot(xic_serine, main = "XIC serine with identified chromatographic peaks")
+
+#' same wiht second chosen ion 
+
+```
+These chrompeask can also be seen in generic plots such as below: 
+```{r}
+srn <- data |>
+filterRt(rt = c(175, 188)) |>
+filterMz(mz = c(106.04, 106.06))
+
+plot(srn[1])
 ```
 
-- merge chromatographic peaks 
+### Refine chromatographic peaks 
+
+The identification of chromatographic peaks can sometimes lead to peak detection 
+artifacts, either overlapping or splits. The function 'refineChromPeaks' is used
+in this case in combination with the 'MergeNeighboringPeaksParam'. 
+This function will results in either removing of peaks that do not meet the 
+condition stated in the parameter or merge peaks that were artificially split 
+in the previous step. 
 
 ```{r merging }
-mpp <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
-                                  minProp = 3/4) 
-data_pp <- refineChromPeaks(data_pp, param = mpp, chunkSize = 5)
 
-#' check how it went 
+#' set up the parameter 
+mnpp <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
+                                   minProp = 3/4) 
+
+#' Apply on whole dataset
+data_pp <- refineChromPeaks(data, param = mnpp, chunkSize = 5)
+chromPeakData(data_pp)
+
+#' check how it went
+#' struggling to find an area to check here # backtrack using the chrompeaksdata 
+
+par(mfrow = c(1, 2))
+plotChromPeaks(data, 1)
+plotChromPeaks(data_pp, 1)
+
+
 #' if all good replace data by the merged data 
-#' 
+data <- data_pp
+
+
+
 ```
 
 ## Retention time alignment
 
 - use initial correspondence.
+
+Let's build a bpc for the quality control samples and observe the retention time shift.
+```{r}
+bpc_raw <- data[c(1,4,7,10)] |>
+  chromatogram(aggregationFun = "max")
+
+plot(bpc_raw, peakType = "none")
+#put all samples, but hange color of non QC is less visible 
+```
+Here we can see some small shift between the different quality control samples. 
+
+
 - use subset alignment.
 
 ## Correspondence
