@@ -217,10 +217,10 @@ list_names <- row.names(well_known)
 chr_list <- list()
 for (i in 1:length(well_known$mz)) {
   print(i)
-  chr_name <- paste0("chr_" , list_names[i])
+  chr_names <- paste0("chr_" , list_names[i])
   chr <- chromatogram(data[c(1,4,7,10)], rt=c(25, 185), mz = well_known[i,3] + c(-0.05, 0.05)) #
-  chr_list[[chr_name]] <-  chr
-  plot(chr_list[[chr_name]], main = chr_name)
+  chr_list[[chr_names]] <-  chr
+  plot(chr_list[[chr_names]], main = chr_names)
 }
 
 ```
@@ -265,7 +265,7 @@ for (i in 1:length(chr_list)) {
   batch_chr  <- findChromPeaks(chr_list[[i]], param = cwp )
   print(chr_names)
   print(chromPeaks(batch_chr))
-  plot(batch_chr, main = chr_name)
+  plot(batch_chr, main = chr_names)
 }
 
 ```
