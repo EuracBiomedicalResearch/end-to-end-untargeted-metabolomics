@@ -8,7 +8,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 The data represents a subset of samples from a larger experiment and consists of
 in total 10 mzML files with 3 samples from individuals with a cardiovascular
-disease, 3 samples from healthy donors and 4 QC samples (pool of all samples of
+disease (), 3 samples from healthy donors and 4 QC samples (pool of all samples of
 the experiment). The MS data has been restricted to a retention time range from
 20 to 230 seconds and an m/z range from 0 to 500. 
 
@@ -43,6 +43,8 @@ MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-
 data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file) ,sampleData = pd)
 data
 
+
+
 ```
 
 - highlights the importance to have a phenodata table 
@@ -66,7 +68,7 @@ data |>
 col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
 names(col_phenotype) <- c("CTR", "CVD", "QC")
 
-col_sample <- col_phenotype[sampleData(data)$group] 
+col_sample <- col_phenotype[sampleData(data)$phenotype] 
 ```
 
 ## Set up parallel processing 
@@ -128,6 +130,7 @@ To generate general data overview we can:
 
 ## BPC and heatmaps to evaluate LC performance.
 
+Data coming from LC-MS experiments are usually analyzed along the retention time axis. MS data is organized by spectrum and hence orthogonally to the retention time axis.
 ```{r bpc}
 
 bpc <- chromatogram(data, aggregationFun = "max")
@@ -145,19 +148,30 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 ```
 - We first looked through the entire base peak chromatogram and then filtered it with specific retention time 
-  - get smaler file size adn easier to read 
-```{r not sure what this is}
+  - get smaller file size and easier to read 
+  
+  
+  
+```{r heatmap}
 bpcb <- bin(bpc)
-plot(bpcb)
-
 intmat <- do.call(cbind, lapply(bpcb, intensity))
 simmat <- cor(intmat)
 pheatmap(simmat)
 #' improve this labelling
 #' 
+#' Total ion chromatogram - and heatmap 
+tic <- chromatogram(data, aggregationFun = "sum")
+plot(tic,col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+btic <- bin(tic)
+ticmap <- do.call(cbind, lapply(btic, intensity))
+sticmap <- cor(ticmap)
+pheatmap(sticmap)
 ```
 
-## EIC of internal standards.
+## XIC of internal standards.
 
 We can also look at a single spectrum: 
 ```{r}
@@ -219,15 +233,15 @@ plot(chr_serine)
 
 #' Also show another XIC that is less obvious (glycine or something else that has 2 distinct peak)
 
-mass_ <- calculateMass("C3H7NO3")
-_mz <- mass2mz(mass_, "[M+H]+")
-_mz <- _mz[1, 1]
+#mass_ <- calculateMass("C3H7NO3")
+#_mz <- mass2mz(mass_, "[M+H]+")
+#_mz <- _mz[1, 1]
 
 #' More refined XIC from QC samples 
-chr_ <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
-                           mz = _mz + c(-0.05, 0.05),
-                           aggregationFun = "max"))
-plot(chr_)
+#chr_ <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
+                          # mz = _mz + c(-0.05, 0.05),
+                           #aggregationFun = "max"))
+#plot(chr_)
 
 # put all samples, but keep the colours
 
@@ -376,22 +390,104 @@ data <- data_pp
 
 - use initial correspondence.
 
-Let's build a bpc for the quality control samples and observe the retention time shift.
+Let's buildlook at the bpc again: 
 ```{r}
-bpc_raw <- data[c(1,4,7,10)] |>
+bpc_raw <- data |>
   chromatogram(aggregationFun = "max")
 
-plot(bpc_raw, peakType = "none")
-#put all samples, but hange color of non QC is less visible 
+plot(bpc_raw, peakType = "none", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+
+#change color of non QC so they are less visible 
 ```
-Here we can see some small shift between the different quality control samples. 
+
+Here we can see that the QC samples that were measured with the same setup on 
+the same day show a slight drifts of the signal are visible.
+
+```{r}
+
+# Grouping the peaks according to 
+pdp <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+                        minFraction = 0.75,
+                        binSize = 0.01,
+                        bw = 2)
+data <- groupChromPeaks(data, param = pdp)
+
+
+
+#' Define parameters of choice
+pgp <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.3,
+                       subsetAdjust = "average",
+                       subset = which(sampleData(data)$phenotype == "QC"))
+
+#' Input in the function
+data <- adjustRtime(data, param = pgp)
+
+#' See result
+plotAdjustedRtime(data, col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+
+
+```
+
+```{r bpc before and after}
+par(mfrow = c(2, 1))
+#' Plot the raw base peak chromatogram
+data_raw <- dropAdjustedRtime(data)
+plot(bpc_raw, peakType = "none")
+#' Plot the BPC after alignment
+plot(chromatogram(data, aggregationFun = "max", chromPeaks = "none"))
+```
 
 
 - use subset alignment.
 
+```{r specific ion before and after}
+#' Similar comparison but this time filtering to see specific ion
+par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
+chromatogram(data_raw, mz = c(106.04, 106.06), rt = c(170, 186)) |>
+plot()
+
+#' Extract the bpc for serine after the adjusted time 
+bpc_serine <- chromatogram(data,  mz = c(106.04, 106.06), rt = c(170, 186))
+plot(bpc_serine)
+
+
+#add the second ion 
+```
+
 ## Correspondence
 
 - use *bad* settings (check maybe xcmsTutorials for examples)
+
+```{r}
+#' Use creatine here as a bad example ? 
+#' Default parameter for the grouping 
+#' Apply them to the serien BPC 
+#' 
+#'Now apply them to creatine / or another ions that shows it
+#'
+#'Updating parameters
+pdp <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+                        minFraction = 1/3, binSize = 0.015, bw = 2.3)
+
+#' Apply to creatine 
+
+```
+
+- Good settings 
+
+```{r}
+#' Now apply to whole data
+data <- groupChromPeaks(data, param = pdp)
+
+data <- fillChromPeaks(data, param = ChromPeakAreaParam(), chunkSize = 5)
+
+```
 
 ## Gap filling
 
