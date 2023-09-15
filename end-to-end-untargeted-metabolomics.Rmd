@@ -8,7 +8,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 The data represents a subset of samples from a larger experiment and consists of
 in total 10 mzML files with 3 samples from individuals with a cardiovascular
-disease (), 3 samples from healthy donors and 4 QC samples (pool of all samples of
+disease, 3 samples from healthy donors and 4 QC samples (pool of all samples of
 the experiment). The MS data has been restricted to a retention time range from
 20 to 230 seconds and an m/z range from 0 to 500. 
 
@@ -42,9 +42,6 @@ MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-
 #' register(MulticoreParam(6)) ask johannes about that
 data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file) ,sampleData = pd)
 data
-
-
-
 ```
 
 - highlights the importance to have a phenodata table 
@@ -171,7 +168,16 @@ sticmap <- cor(ticmap)
 pheatmap(sticmap)
 ```
 
-## XIC of internal standards.
+
+## Spectra data 
+
+```{r}
+bps <- combineSpectra(spectra(data), f = fromFile(data),
+                      intensityFun = max, ppm = 10)
+
+plotSpectra(bps)
+```
+
 
 We can also look at a single spectrum: 
 ```{r}
@@ -217,10 +223,11 @@ Calculate the mass of a few ion expected to be seen in the dataset - maybe that 
 - then calculate the ion mass for these - create a variable in which you put it
 - use this variable to subset MS data for all ion with this mass - check the chromatogram for this range ( take in note the rtime range)
 
+## XIC of internal standards.
 Next need to generate extracted ion chromatogram (XIC) for all these "test ions" 
+
 ```{r}
 #'Calculating ion mass for Serine
-
 mass_serine <- calculateMass("C3H7NO3")
 serine_mz <- mass2mz(mass_serine, "[M+H]+")
 serine_mz <- serine_mz[1, 1]
@@ -253,12 +260,10 @@ plot(chr_serine)
 #' the code works though 
 
 #' first create a data.frame that will store the compound of interest and their
-#'  calculated ion mass
+#' calculated ion mass
 well_known <- data.frame(
   row.names = c("serine", "glycine", "creatine", "glucose"))
-
 well_known$Formula <- c("C3H7NO3", "C2H5NO2", "C4H9N3O2", "C6H12O6")
-
 well_known$Mass <- calculateMass(well_known$Formula)
 well_known$mz <- mass2mz(well_known$Mass, "[M+H]+")
 
@@ -287,8 +292,8 @@ These well-known ions can be used later for pre-processing
 
 use the findChromPeaks function within xcms
 - the preferred algorithm is the CentwaveParam - better for non-Gaussian shape which is what we usually get with HILIC separation (other algorithm also exist)
-```{r}
 
+```{r}
 #' Use default Centwave parameter, and evaluate for serine. 
 cwp <- CentWaveParam()
 default <- findChromPeaks(chr_serine, param= cwp)
