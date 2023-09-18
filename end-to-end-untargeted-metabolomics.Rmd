@@ -1,3 +1,9 @@
+---
+title: "End-to-end workflow for LC-MS/MS analysis using *MsExperiment and *Spectra*"
+output: html_document
+date: "2023-09-07"
+---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
@@ -263,7 +269,7 @@ to read bpc.
 
 This last plot hence shows th BPC for each samples and give us information on 
 the retention time captured during our experiment, therefore at what retention 
-time compounds eluted fron the LC column. Essentially, a BPC collapses the 
+time compounds eluted from the LC column. Essentially, a BPC collapses the 
 3-dimensional LC-MS data (m/z by retention time by intensity) into 2 dimensions 
 (retention time by intensity)
   
