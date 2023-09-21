@@ -99,11 +99,9 @@ data
 
 The experimental data is now a `MsExperiment` object.  The `MsExperiment` 
 object manages the linkage between samples and spectra. Its length is defined 
-by the number of samples within the object. 
-
-
-The phenodata is a crucial aspect of LC-MS/MS analysis. It can be accessed using the Table 1 here shows us 
-more details about our dataset's samples.
+by the number of samples within the object. The phenodata is a crucial aspect 
+of LC-MS/MS analysis. It can be accessed using `sampleData()`. The Table 1 
+below shows us more details about our dataset's samples.
 
 There is `r length(sampleData(data))` samples in this dataset. Here are some 
 abbreviation necessary to properly read the phenodata table.
@@ -300,65 +298,36 @@ Calculate the mass of a few ion expected to be seen in the dataset.
 - use this variable to subset MS data for all ion with this mass - check the chromatogram for this range (take in note the rtime range)
 Next need to generate extracted ion chromatogram (XIC) for all these "test ions" 
 
-```{r}
-#'Calculating ion mass for Serine
-mass_serine <- calculateMass("C3H7NO3")
-serine_mz <- mass2mz(mass_serine, "[M+H]+")
-serine_mz <- serine_mz[1, 1]
+```{r EIC}
+#'Calculating ion mass for:
+#' Cystine  
+mass_cystine <- calculateMass("C6H12N2O4S2")
+cystine_mz <- mass2mz(mass_cystine, "[M+H]+")
+cystine_mz <- cystine_mz[1, 1]
 
-#' More refined XIC from QC samples 
-chr_serine <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
-                           mz = serine_mz + c(-0.05, 0.05),
+chr_cystine <- (chromatogram(data, rt = c(195, 218),
+                           mz = cystine_mz + c(-0.05, 0.05),
                            aggregationFun = "max"))
-plot(chr_serine)
 
-#' Also show another XIC that is less obvious (glycine or something else that has 2 distinct peak)
-#' 
-#' 
+#' 1- Methylhistidine
+mass_1Met <- calculateMass("C7H11N3O2")
+Met_mz <- mass2mz(mass_1Met, "[M+H]+")
+Met_mz <- Met_mz[1, 1]
 
-#mass_ <- calculateMass("C3H7NO3")
-#_mz <- mass2mz(mass_, "[M+H]+")
-#_mz <- _mz[1, 1]
-
-#' More refined XIC from QC samples 
-#chr_ <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
-                          # mz = _mz + c(-0.05, 0.05),
-                           #aggregationFun = "max"))
-#plot(chr_)
-
-# put all samples, but keep the colours
-
-
-
-#' under here is test  to analyse multiple ions at the same time, however i am 
-#' struggling a bit with the fact that they have a wide range of rtime and 
-#' therefore make downstream analysis less clear for people. 
-#' either need to be improve, change ions of interest or just do one ion by one. 
-#' the code works though 
-
-#' first create a data.frame that will store the compound of interest and their
-#' calculated ion mass
-well_known <- data.frame(
-  row.names = c("serine", "glycine", "creatine", "glucose"))
-well_known$Formula <- c("C3H7NO3", "C2H5NO2", "C4H9N3O2", "C6H12O6")
-well_known$Mass <- calculateMass(well_known$Formula)
-well_known$mz <- mass2mz(well_known$Mass, "[M+H]+")
-
-#create a list of chromatogram in the QC samples for all the compound 
-list_names <- row.names(well_known)
-chr_list <- list()
-for (i in 1:length(well_known$mz)) {
-  print(i)
-  chr_names <- paste0("chr_" , list_names[i])
-  chr <- chromatogram(data[c(1,4,7,10)], rt=c(25, 185), 
-                      mz = well_known[i,3] + c(-0.05, 0.05)) 
-  chr_list[[chr_names]] <-  chr
-  plot(chr_list[[chr_names]], main = chr_names)
-}
-# sodium 
+chr_Met <- (chromatogram(data, rt = c(170, 200),
+                           mz = Met_mz + c(-0.05, 0.05),
+                           aggregationFun = "max"))
+#' plot EIC
+par(mfrow = c(1, 2))
+plot(chr_cystine, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+plot(chr_Met, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
 
 ```
-
+... describe EIC
 These well-known ions can be used later for pre-processing
 
 # Data pre-processing
@@ -375,67 +344,102 @@ use the findChromPeaks function within xcms
 - the preferred algorithm is the CentwaveParam - better for non-Gaussian shape which is what we usually get with HILIC separation (other algorithm also exist)
 
 ```{r}
-#' Use default Centwave parameter, and evaluate for serine. 
+##' Use default Centwave parameter
+#' Evaluate for Cystine 
 cwp <- CentWaveParam()
-default <- findChromPeaks(chr_serine, param= cwp)
+default <- findChromPeaks(chr_cystine, param= cwp)
 chromPeaks(default)
 
-#' do same with second chosen ion
-
-#' With more accurate parameters 
-cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
-chr_serine_test <- findChromPeaks(chr_serine, param= cwp)
-chromPeaks(chr_serine_test)
-plot(chr_serine_test)
-
-#' do same with second chosen ion
-#' 
-
-
-##' Here again test for multiple ions at once, works but again bc rtime is so different, cannot see super clearly
-#' Evaluate signal for common ions
-#' use the previously build list of XIC for common ions 
-cwp <- CentWaveParam()
-defaultrun <- findChromPeaks(chr_list[[1]], param = cwp )
-chromPeaks(defaultrun)
-
-cwp <- CentWaveParam(peakwidth = c(2, 10), ppm = 40, integrate = 2)
-list_names <- row.names(well_known)
-for (i in 1:length(chr_list)) { 
-  print(i)
-  chr_names <- paste0("chr_" , list_names[i])
-  batch_chr  <- findChromPeaks(chr_list[[i]], param = cwp )
-  print(chr_names)
-  print(chromPeaks(batch_chr))
-  plot(batch_chr, main = chr_names)
-}
-
+#' Evaluate for 1- Methylhistidine
+default <- findChromPeaks(chr_Met, param= cwp)
+chromPeaks(default)
 
 ```
+describe why and the peakwidth of the 2 ions
+the other parameter we need to look at is the `ppm =`
+
+```{r ppm parameter }
+
+#' Restrict the data to signal from Cystine
+cst <- data |>
+filterRt(rt = c(195, 218)) |>
+filterMz(mz = cystine_mz + c(-0.05, 0.05))
+
+#' Reduce the data set to signal of the [M+H]+ ion of cystine
+cst_1 <- cst[1] |>
+    filterMzRange(cystine_mz + c(-0.01, 0.01)) |>
+    spectra() 
+
+lengths(cst_1) #how to get better numbers ?
+
+#' Calculate the difference in m/z values between scans
+mz_diff <- cst_1 |>
+    mz() |>
+    unlist() |>
+    diff() |>
+    abs()
+
+#' Express it in ppm
+range(mz_diff * 1e6 / mean(unlist(mz(cst_1))))
+```
+
+.. we take a ppm value within this range # need to discuss this
 
 - re-run with adapted settings.
 
-```{r run find chrompeak on entire dataset}
+```{r}
+##' With more accurate parameters 
+cwp <- CentWaveParam(peakwidth = c(1, 8), ppm = 50, integrate = 2)
 
+chr_cystine_test <- findChromPeaks(chr_cystine, param= cwp)
+chromPeaks(chr_cystine_test)
+
+chr_Met_test <- findChromPeaks(chr_Met, param= cwp)
+chromPeaks(chr_Met_test)
+
+#' Plot test chromatogram
+par(mfrow = c(1, 2))
+plot(chr_cystine_test, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+plot(chr_Met_test, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+
+```
+
+```{r run find chrompeak on entire dataset}
 data <- findChromPeaks(data, param = cwp, chunkSize = 5)
 data
 
-#' Test if we find serine again 
-xic_serine <- chromatogram(data, mz = c(106.04, 106.06),
-                           rt = c(170, 186))
-chromPeaks(xic_serine) 
-plot(xic_serine, main = "XIC serine with identified chromatographic peaks")
+#' Test if we find cystine and 1- Methylhistidine again 
+eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.05, 0.05),
+                           rt = c(205, 215))
+eic_Met <- chromatogram(data, mz = Met_mz + c(-0.05, 0.05),
+                           rt = c(180, 195))
 
-#' same wiht second chosen ion 
+chromPeaks(eic_cystine) 
+chromPeaks(eic_Met)
+
+#' Plot 
+par(mfrow = c(1, 2))
+plot(eic_cystine, main = "EIC Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+plot(eic_Met, main = "EIC 1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
 
 ```
-These chrompeask can also be seen in generic plots such as below: 
-```{r}
-srn <- data |>
-filterRt(rt = c(175, 188)) |>
-filterMz(mz = c(106.04, 106.06))
 
-plot(srn[1])
+
+These chrompeaks can also be seen in generic plots such as below: 
+```{r}
+cst <- data |>
+filterRt(rt = c(195, 218)) |>
+filterMz(mz = cystine_mz + c(-0.05, 0.05))
+
+plot(cst[1]) # discuss this, because ugly small peak
 ```
 
 ### Refine chromatographic peaks 
@@ -467,8 +471,6 @@ plotChromPeaks(data_pp, 1)
 
 #' if all good replace data by the merged data 
 data <- data_pp
-
-
 
 ```
 
