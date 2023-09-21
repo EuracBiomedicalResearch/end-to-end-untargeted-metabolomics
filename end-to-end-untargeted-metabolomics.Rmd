@@ -441,6 +441,11 @@ filterMz(mz = cystine_mz + c(-0.05, 0.05))
 
 plot(cst[1]) # discuss this, because ugly small peak
 ```
+```{r}
+#' need to find area of ugly peaks 
+```
+
+
 
 ### Refine chromatographic peaks 
 
