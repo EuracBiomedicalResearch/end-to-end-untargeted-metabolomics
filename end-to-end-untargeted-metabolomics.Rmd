@@ -74,7 +74,6 @@ MassIVE].
 pd <- as.data.frame(read_xlsx("data/phenodata.xlsx"))
 
 #' Import the data
-
 #' Massive data bank extraction but for now not. 
 MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML"
 
@@ -98,21 +97,22 @@ if (.Platform$OS.type == "unix") {
 data
 ```
 
-The experimental data is now a 'MsExperiment' object.  The 'MsExperiment' object manages the linkage between samples and spectra 
-  - it's length is defined by the number of samples within the object. 
+The experimental data is now a `MsExperiment` object.  The `MsExperiment` 
+object manages the linkage between samples and spectra. Its length is defined 
+by the number of samples within the object. 
 
 
-The phenodata is a crucial aspect of LC-MS/MS analysis. Table 1 here shows us 
+The phenodata is a crucial aspect of LC-MS/MS analysis. It can be accessed using the Table 1 here shows us 
 more details about our dataset's samples.
 
-There is 'r length(sampleData(data))' samples in this dataset. Here are some 
+There is `r length(sampleData(data))` samples in this dataset. Here are some 
 abbreviation necessary to properly read the phenodata table.
 - Injection Index:
 - QC: Quality control sample 
 - CVD: 
 - CTR: 
 
-Metadata in our 'MsExperiment' object is accessed using the 'sampleData()' function. we used this and the 'pander' package to build this table representing the metadata of our study (table 1)
+Metadata in our `MsExperiment` object is accessed using the `sampleData()` function. we used this and the *pander* package to build this table representing the metadata of our study (table 1)
 
 ```{r phenodata, echo=FALSE}
 print("Table 1.Samples from the data set.")
@@ -131,10 +131,10 @@ col_sample <- col_phenotype[sampleData(data)$phenotype]
 ```
 
 
-The MS data of this experiment is stored as a 'Spectra' object within the 
-'MsExperiment' object and can be accessed using 'Spectra()' function. 
+The MS data of this experiment is stored as a `Spectra` object within the 
+`MsExperiment` object and can be accessed using `Spectra()` function. 
 Each element in this object is a spectrum - they are organised linearly and are 
-all combined in the same 'spectra' object one after the other (through retention
+all combined in the same `spectra` object one after the other (through retention
 time and samples).
 ```{r}
 # Access Spectra Object 
@@ -146,7 +146,7 @@ spectra(data)
 length(data)
 ```
 
-We therefore have an dataset of 'r length(spectra(data))' spectra. 
+We therefore have an dataset of `r length(spectra(data))` spectra. 
 
 ```{r}
 #' Retention time range for entire dataset 
@@ -156,10 +156,10 @@ range()
 ```
 Data coming from LC-MS experiments are usually analyzed along the retention time
 axis. MS data is organized by spectrum and hence orthogonaly to the retention 
-time axis. The 'chromatogram()' function therefore allows to extract intensities
+time axis. The `chromatogram()` function therefore allows to extract intensities
 along retention time. The access to chromatographic information is not as 
 efficient and seamless as for spectra information but development of a 
-'chromatogram' object as thorough and easy of use as the 'Spectra' object is 
+`chromatogram` object as thorough and easy of use as the `Spectra` object is 
 underway. 
 
 # Data visualization and general quality assessment
@@ -228,8 +228,8 @@ exspecQC
 plotSpectra(exspecQC[1:4]) 
 ```
 
-There were 'r length(exspec)' spectra measured in this one second within the 
-entire dataset and 'r length(exspecQC)' in our QC samples. After plotting them, 
+There were `r length(exspec)` spectra measured in this one second within the 
+entire dataset and `r length(exspecQC)` in our QC samples. After plotting them, 
 we can spot several mass peaks, a common peak can be seen at 106 m/z which could
 represent the ion of Serine. We can look into this a bit later.
 
@@ -242,9 +242,9 @@ liquid chromatography of the various samples in an experiment. To create such a
 plot we below extract the BPC from our data. The BPC extracts the maximum peak 
 signal from each spectrum in a data file and plots this information 
 (on the y-axis) against the retention time for that spectrum. The BPC can be 
-extracted using the 'chromatogram' function. 
-With parameter 'aggregationFun = "max"' we define to report the maximum signal 
-per spectrum. On the other hand setting 'aggregationFun = "sum"' sum up all 
+extracted using the `chromatogram` function. 
+With parameter `aggregationFun = "max"` we define to report the maximum signal 
+per spectrum. On the other hand setting `aggregationFun = "sum"` sum up all 
 intensities of a spectrum and hence create a TIC.
 
 ```{r bpc}
@@ -313,6 +313,8 @@ chr_serine <- (chromatogram(data[c(1,4,7,10)], rt = c(164, 200),
 plot(chr_serine)
 
 #' Also show another XIC that is less obvious (glycine or something else that has 2 distinct peak)
+#' 
+#' 
 
 #mass_ <- calculateMass("C3H7NO3")
 #_mz <- mass2mz(mass_, "[M+H]+")
@@ -439,8 +441,8 @@ plot(srn[1])
 ### Refine chromatographic peaks 
 
 The identification of chromatographic peaks can sometimes lead to peak detection 
-artifacts, either overlapping or splits. The function 'refineChromPeaks' is used
-in this case in combination with the 'MergeNeighboringPeaksParam'. 
+artifacts, either overlapping or splits. The function `refineChromPeaks` is used
+in this case in combination with the `MergeNeighboringPeaksParam`. 
 This function will results in either removing of peaks that do not meet the 
 condition stated in the parameter or merge peaks that were artificially split 
 in the previous step. 
