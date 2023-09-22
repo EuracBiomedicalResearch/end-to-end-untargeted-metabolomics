@@ -423,9 +423,11 @@ chromPeaks(eic_Met)
 
 #' Plot 
 par(mfrow = c(1, 2))
-plot(eic_cystine, main = "EIC Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_cystine, main = "EIC Cystine", 
+     col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
-plot(eic_Met, main = "EIC 1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_Met, main = "EIC 1- Methylhistidine", 
+     col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
