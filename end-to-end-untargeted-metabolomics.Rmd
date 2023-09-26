@@ -317,7 +317,7 @@ mass_cystine <- calculateMass("C6H12N2O4S2")
 cystine_mz <- mass2mz(mass_cystine, "[M+H]+")
 cystine_mz <- cystine_mz[1, 1]
 
-chr_cystine <- (chromatogram(data, rt = c(195, 218),
+eic_cystine <- (chromatogram(data, rt = c(195, 218),
                            mz = cystine_mz + c(-0.05, 0.05),
                            aggregationFun = "max"))
 
@@ -326,14 +326,14 @@ mass_1Met <- calculateMass("C7H11N3O2")
 Met_mz <- mass2mz(mass_1Met, "[M+H]+")
 Met_mz <- Met_mz[1, 1]
 
-chr_Met <- (chromatogram(data, rt = c(170, 200),
+eic_Met <- (chromatogram(data, rt = c(170, 200),
                            mz = Met_mz + c(-0.05, 0.05),
                            aggregationFun = "max"))
 #' plot EIC
 par(mfrow = c(1, 2))
-plot(chr_cystine, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_cystine, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
-plot(chr_Met, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_Met, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -361,12 +361,12 @@ which is what we usually get with HILIC separation (other algorithm also exist)
 ```{r Default centaweve param test}
 ##' Use default Centwave parameter
 #' Evaluate for Cystine 
-cwp <- CentWaveParam()
-default <- findChromPeaks(chr_cystine, param= cwp)
+param <- CentWaveParam()
+default <- findChromPeaks(chr_cystine, param = param)
 chromPeaks(default)
 
 #' Evaluate for 1- Methylhistidine
-default <- findChromPeaks(chr_Met, param= cwp)
+default <- findChromPeaks(chr_Met, param = param)
 chromPeaks(default)
 
 ```
@@ -386,21 +386,21 @@ filterRt(rt = c(195, 218)) |>
 filterMz(mz = cystine_mz + c(-0.05, 0.05))
 
 #' Reduce the data set to signal of the [M+H]+ ion of cystine
-cst_1 <- cst[1] |>
+cst <- cst[1] |>
     filterMzRange(cystine_mz + c(-0.01, 0.01)) |>
     spectra() 
 
-lengths(cst_1) #how to get better numbers ?
+lengths(cst)
 
 #' Calculate the difference in m/z values between scans
-mz_diff <- cst_1 |>
+mz_diff <- cst |>
     mz() |>
     unlist() |>
     diff() |>
     abs()
 
 #' Express it in ppm
-range(mz_diff * 1e6 / mean(unlist(mz(cst_1))))
+range(mz_diff * 1e6 / mean(unlist(mz(cst))))
 ```
 
 .. we take a ppm value close to the maximum of this range.
@@ -410,19 +410,19 @@ Now re-run with adapted settings.
 
 ```{r}
 #' With more accurate parameters 
-cwp <- CentWaveParam(peakwidth = c(1, 8), ppm = 50, integrate = 2)
+param <- CentWaveParam(peakwidth = c(1, 8), ppm = 50, integrate = 2)
 
-chr_cystine_test <- findChromPeaks(chr_cystine, param= cwp)
-head(chromPeaks(chr_cystine_test))
+cystine_test <- findChromPeaks(eic_cystine, param = param)
+head(chromPeaks(cystine_test))
 
-chr_Met_test <- findChromPeaks(chr_Met, param= cwp)
-head(chromPeaks(chr_Met_test))
+Met_test <- findChromPeaks(eic_Met, param = param)
+head(chromPeaks(Met_test))
 
 #' Plot test chromatogram
 par(mfrow = c(1, 2))
-plot(chr_cystine_test, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(cystine_test, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
-plot(chr_Met_test, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(Met_test, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -437,7 +437,7 @@ the EIC for our two ions test.
 
 
 ```{r run find chrompeak on entire dataset}
-data <- findChromPeaks(data, param = cwp, chunkSize = 5)
+data <- findChromPeaks(data, param = param, chunkSize = 5)
 
 #' Test if we find cystine and 1- Methylhistidine again 
 eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.05, 0.05),
@@ -510,11 +510,11 @@ plot(eics)
 
 ```{r merging }
 #' set up the parameter 
-mnpp <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
+param <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.001,
                                    minProp = 3/4) 
 
 #' Perform the peak refinement on the EICs
-eics <- refineChromPeaks(eics, param = mnpp)
+eics <- refineChromPeaks(eics, param = param)
 plot(eics)
 ```
 
@@ -526,7 +526,7 @@ plot(eics)
 
 ```{r}
 #' Apply on whole dataset
-data <- refineChromPeaks(data, param = mnpp, chunkSize = 5)
+data <- refineChromPeaks(data, param = param, chunkSize = 5)
 chromPeakData(data)
 ```
 
@@ -556,27 +556,25 @@ the same day show a slight drifts of the signal are visible.
 ```{r}
 
 # Grouping the peaks according to 
-pdp <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                         minFraction = 0.75,
                         binSize = 0.01,
                         bw = 2)
-data <- groupChromPeaks(data, param = pdp)
+data <- groupChromPeaks(data, param = param)
 
 #' Define parameters of choice
-pgp <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.3,
+param <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.3,
                        subsetAdjust = "average",
                        subset = which(sampleData(data)$phenotype == "QC"))
 
 #' Input in the function
-data <- adjustRtime(data, param = pgp)
+data <- adjustRtime(data, param = param)
 
 #' See result
 plotAdjustedRtime(data, col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
-
-
 ```
 
 
@@ -639,18 +637,18 @@ Use another ion as example...
 
 ```{r}
 #' Default parameter for the grouping and apply them to the test ions BPC 
-pdp <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 30)
-plotChromPeakDensity(eic_cystine, param = pdp)
-plotChromPeakDensity(eic_Met, param = pdp)
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 30)
+plotChromPeakDensity(eic_cystine, param = param)
+plotChromPeakDensity(eic_Met, param = param)
 ```
 
 - Good settings 
 ```{r}
 #'Updating parameters
-pdp <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                         minFraction = 1/3, binSize = 0.015, bw = 2)
-plotChromPeakDensity(eic_cystine, param = pdp)
-plotChromPeakDensity(eic_Met, param = pdp)
+plotChromPeakDensity(eic_cystine, param = param)
+plotChromPeakDensity(eic_Met, param = param)
 ```
 
 
@@ -683,12 +681,20 @@ F00005 and F00006 contain missing values in some samples
 ## Gap filling
 
 Process to try to rescue some peaks that are only detected in a subset of samples. 
-```{r peaks found in a few QC not all}
+```{r peaks found in a few QC not all, echo=FALSE}
+#' Extract the m/z-rt region for selected peaks
+mz_rt <- featureArea(data, features = c("FT00057", "FT00086"))
+mz_rt[, "rtmin"] <- mz_rt[, "rtmin"] - 2
+mz_rt[, "rtmax"] <- mz_rt[, "rtmax"] + 2
 
+#' Extract their EICs and plot them
+chrs <- chromatogram(data[c(1,3)], mz = mz_rt[, c("mzmin", "mzmax")],
+                     rt = mz_rt[, c("rtmin", "rtmax")])
+plot(chrs, col = c("red", "blue"), lwd = 2)
 
 
 ```
-
+(find better example of peaks that can be rescued): is.na(featureValues(data))
 .. Discuss example 
 
 ```{r}
@@ -699,28 +705,41 @@ sum(is.na(featureValues(data)))
 - compare signal for filled-in and detected signal for QC samples. is it
   correlated?
 ```{r}
-data_p <- fillChromPeaks(data, param = ChromPeakAreaParam(), chunkSize = 5)
+data <- fillChromPeaks(data, param = ChromPeakAreaParam(), chunkSize = 5)
 
 #' How many missing values after
 sum(is.na(featureValues(data)))
 ```
 With `fillChromPeaks` we could thus rescue signal for all but `r sum(is.na(featureValues(data)))` features. Below we extract the EICs for these and visually inspect some of them.
 
-```{r}
+```{r echo=TRUE}
 #' Identify features with missing values
-fts <- rownames(featureValues(data_p))[is.na(rowSums(featureValues(data_p)))]
+fts <- rownames(featureValues(data))[is.na(rowSums(featureValues(data)))]
 
 #' Define m/z - rt regions for these features
-mz_rt <- featureArea(data_p, features = fts)
+mz_rt <- featureArea(data, features = fts)
 
 #' Expand the retention time by 1 second on both sides
 mz_rt[, "rtmin"] <- mz_rt[, "rtmin"] - 1
 mz_rt[, "rtmax"] <- mz_rt[, "rtmax"] + 1
 
-chrs_na <- chromatogram(data_p[1], mz = mz_rt[, c("mzmin", "mzmax")],
+chrs_na <- chromatogram(data[1], mz = mz_rt[, c("mzmin", "mzmax")],
                         rt = mz_rt[, c("rtmin", "rtmax")])
 
 plot(chrs_na, col = c("red", "blue"), lwd = 2)
+```
+Show the rescued peaks: 
+
+```{r echo=FALSE}
+#' Extract the m/z-rt region for selected peaks
+mz_rt <- featureArea(data, features = c("FT00057", "FT00086"))
+mz_rt[, "rtmin"] <- mz_rt[, "rtmin"] - 2
+mz_rt[, "rtmax"] <- mz_rt[, "rtmax"] + 2
+
+#' Extract their EICs and plot them
+chrs <- chromatogram(data[c(1,3)], mz = mz_rt[, c("mzmin", "mzmax")],
+                     rt = mz_rt[, c("rtmin", "rtmax")])
+plot(chrs, col = c("red", "blue"), lwd = 2)
 ```
 
   
