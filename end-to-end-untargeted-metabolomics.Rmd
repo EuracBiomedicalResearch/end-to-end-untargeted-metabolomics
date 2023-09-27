@@ -610,9 +610,9 @@ Can also observe it in our ions of interest:
 #' Similar comparison but this time filtering to see cystine
 par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
 old_eic_cystine <- chromatogram(data_raw, mz = cystine_mz + c(-0.05, 0.05), rt = c(205, 214))
-plot(old_eic_cystine)
+plot(old_eic_cystine, main = "Cystine before alignment")
 eic_cystine <- chromatogram(data,  mz = cystine_mz + c(-0.05, 0.05), rt = c(205, 214)) 
-plot(eic_cystine)
+plot(eic_cystine, "Cystine after alignment")
 ```
 
 Little difference
@@ -622,9 +622,9 @@ Little difference
 par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
 old_eic_Met <- chromatogram(data_raw, mz = Met_mz + c(-0.05, 0.05), 
                             rt = c(175, 195)) 
-plot(old_eic_Met, main = )
+plot(old_eic_Met, main = "1- Methylhistidine before alignment" )
 eic_Met <- chromatogram(data,  mz = Met_mz + c(-0.05, 0.05), rt = c(175, 195))
-plot(eic_Met)
+plot(eic_Met, main = "1- Methylhistidine after alignment" )
 ```
 Our test ions did not display any significant differences between the raw and 
 adjusted data. 
