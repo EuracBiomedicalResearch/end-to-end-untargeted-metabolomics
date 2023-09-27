@@ -362,11 +362,11 @@ which is what we usually get with HILIC separation (other algorithm also exist)
 ##' Use default Centwave parameter
 #' Evaluate for Cystine 
 param <- CentWaveParam()
-default <- findChromPeaks(chr_cystine, param = param)
+default <- findChromPeaks(eic_cystine, param = param)
 chromPeaks(default)
 
 #' Evaluate for 1- Methylhistidine
-default <- findChromPeaks(chr_Met, param = param)
+default <- findChromPeaks(eic_Met, param = param)
 chromPeaks(default)
 
 ```
@@ -656,7 +656,7 @@ Now...
 
 ```{r}
 #' Now apply to whole data
-data <- groupChromPeaks(data, param = pdp)
+data <- groupChromPeaks(data, param = param)
 ```
 
 Test by checking an area with ions that are isomers of isoleucine and leucine 
@@ -682,6 +682,7 @@ F00005 and F00006 contain missing values in some samples
 
 Process to try to rescue some peaks that are only detected in a subset of samples. 
 ```{r peaks found in a few QC not all, echo=FALSE}
+is.na(featureValues(data))
 #' Extract the m/z-rt region for selected peaks
 mz_rt <- featureArea(data, features = c("FT00057", "FT00086"))
 mz_rt[, "rtmin"] <- mz_rt[, "rtmin"] - 2
@@ -746,7 +747,14 @@ plot(chrs, col = c("red", "blue"), lwd = 2)
 These pre-processing steps results in the two-dimensional matrix with abundances
 of the so-called LC-MS features in all samples. At this stage the features are 
 only characterized by their m/z and retention time. 
-  
+
+extract results of pre-processing: 
+```{r}
+#' Extract results as a SummarizedExperiment
+library(SummarizedExperiment)
+res <- quantify(data, method = "sum")
+```
+
 
 # Data normalization
 
