@@ -91,7 +91,7 @@ pd <- read_xlsx("data/phenodata.xlsx") |>
 MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML"
 
 #' register(MulticoreParam(6)) ask johannes about that
-data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file) ,sampleData = pd)
+data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file), sampleData = pd)
 ```
 
 ... just a tiny text with default everything is parallelized
