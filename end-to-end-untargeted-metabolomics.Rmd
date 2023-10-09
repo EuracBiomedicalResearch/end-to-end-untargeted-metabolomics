@@ -17,13 +17,32 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 
 # Abstract 
 
-Untargeted Ms/MS analysis has... (one sentence intro on the technic). 
+Metabolomics provides a real-time view of the metabolic state of the examined samples. 
+Mass spectrometry use in context of metabolomics studies allows to understand the 
+#difference in metabolome due to specificc factors. Untargeted LC-MS/MS
+As an example, the dataset described here aimed to identify differences in 
+plasma metabolite levels between ACM patients and healthy controls.  However one of the challenges in this field is the lack of efficient and scalable infrastructure for the analysis of untargeted MS/MS data.
 Currently, numerous specialized packages cater to specific analysis steps but 
-often lack flawless integration. Here, we introduce an R pipeline leveraging 
-*Spectra* and *MsExperiment* to encompass all pre-processing and downstream 
-analyses of LC-MS/MS datasets in a reproducible manner. Our pipeline seamlessly
+often lack flawless integration. 
+
+Metabolomics provides a dynamic snapshot of the metabolic status within examined
+samples, with mass spectrometry serving as a key tool in unraveling the 
+intricate differences in metabolomes attributable to specific factors. In the 
+context of metabolomic investigations, untargeted LC-MS/MS emerges as a powerful
+approach. In this study, we employed this technique to discern variations in 
+plasma metabolite levels between patients with ACM (Adverse Cardiac Events) and 
+healthy controls.
+
+Despite the potential insights offered by untargeted MS/MS data, a significant 
+challenge in the field lies in the absence of an efficient and scalable 
+infrastructure for its analysis. While various specialized packages exist for 
+specific analysis steps, seamless integration remains elusive. Addressing this 
+gap, we present an innovative R pipeline that harnesses *Spectra* and 
+*MsExperiment* to encompass all aspects of pre-processing and downstream 
+analyses for LC-MS/MS datasets in a reproducible manner.Our pipeline seamlessly
 integrates Bioconductor packages, offering adaptability to diverse study designs
 and analysis requirements.
+
 
 # Keyword
 LC-MS/MS, pre-processing, normalization, feature identification... 
