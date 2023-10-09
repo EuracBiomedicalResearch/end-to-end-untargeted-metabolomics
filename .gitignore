@@ -1,0 +1,11 @@
+local_data/*
+.Rproj.user
+data/phenodata.txt
+phenodata.txt
+data/*
+chris_scanning*
+*.RData
+*.png
+*.html
+*.pdf
+images/
