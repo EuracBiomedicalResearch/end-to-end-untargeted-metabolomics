@@ -1,0 +1,367 @@
+---
+title: "Norm_test_end_to_end"
+author:
+  - name: "Philippine Louail"
+affiliation: "Eurac Research, Bolzano, Italy"
+output: pdf_document  
+date: "2023-09-07"
+---
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7)
+```
+
+
+```{r packages used}
+library(MsExperiment)
+library(xcms)
+library(Spectra)
+library(RColorBrewer)
+library(pander)
+library(readxl)
+library(MetaboCoreUtils)
+library(pheatmap)
+library(DESeq2)
+library(edgeR)
+library(CompMetaboTools)
+library(ggplot2)
+library(ggfortify)
+```
+
+## Prep norm 
+
+First need to load the results and the preprocessed dataset. We also create a
+new `assay` within the result object and impute the `NA` values 
+
+```{r}
+#' Load preprocessing results 
+load("SumExp.RData")
+load("data.RData")
+
+#' Impute missing values.
+assays(res)$raw_filled_imputed <- imputeRowMinRand(
+                   assay(res, "raw_filled"), method = "from_to")
+
+#' Use another method for imputing 
+
+#' Also one assay where just remove NAs
+
+```
+
+### PCA unsupervised 
+
+Look for overall biases in batch, sample, injection index,...
+
+```{r unsupervised checks}
+tmp_imp <- assay(res, "raw_filled_imputed")
+pca_res <- prcomp(t(log2(tmp_imp)), scale = FALSE, center = TRUE)
+
+autoplot(pca_res, data = data.frame(colData(res)), colour = 'phenotype')
+```
+
+### Internal standard: 
+We want to select the internal standard for which we have features defined. 
+
+```{r}
+#' features id corresponding to IS 
+intern_standard <- read.delim("internal_standards.txt") 
+intern_standard <- intern_standard[-4, ] ## remove succinic acid because no POS
+
+#'generate calcualte formula
+intern_standard[, "mz"] <- mass2mz(intern_standard$formula,
+                                   adduct = "[M+H]+")[, 1]
+intern_standard[3, "mz"] <- mass2mz(intern_standard[3,"formula"],
+                                    adduct = "[M+Na]+")[, 1]
+
+intern_standard$feature_id <- NA_character_
+
+rt_tol <- 30
+for (i in seq_len(nrow(intern_standard))) {
+    fts <- featureDefinitions(data, mz = intern_standard$mz[i], ppm = 50)
+    if (nrow(fts)) {
+        rtdiff <- abs(fts$rtmed - intern_standard$RT[i])
+        keep <- rtdiff < rt_tol
+        if (sum(keep) == 1)
+            intern_standard$feature_id[i] <- rownames(fts)[keep]
+    }
+}
+intern_standard <- intern_standard[!is.na(intern_standard$feature_id), ]
+
+is_features <- featureChromatograms(
+    data, features = intern_standard$feature_id, expandRt = 5)
+
+for (i in seq_len(nrow(intern_standard))) {
+    png(paste("png/internal_standard/features/IS_feature_for",
+              intern_standard[i, 2], ".png"),
+        width = 16, height = 8, units = "cm", res = 200, pointsize = 4)
+    plot(is_features[i, ])
+    abline(v = intern_standard$RT[i], lty = 2)
+    dev.off()
+}
+
+#' prepare PCA 
+pc_int <- prcomp(t(log2(tmp_imp[intern_standard$feature_id, ])), scale = FALSE,
+                 center = TRUE)
+autoplot(pc_int, data = data.frame(colData(res)), colour = 'phenotype')
+```
+ 
+Describe distribution of IS.. 
+
+```{r internal-standard-table, echo=TRUE, message=FALSE, warning=FALSE, results="asis"}
+#' table of internal standards with mean and sd of abundances (in log2 scale)
+tmp_fv <- assay(res, "raw")[intern_standard$feature_id, ]
+intern_standard$mean_abd <- rowMeans(log2(tmp_fv), na.rm = TRUE)
+intern_standard$sd_abd <- rowSds(log2(tmp_fv), na.rm = TRUE)
+intern_standard$RSD <- rowRsd(tmp_fv, na.rm = TRUE)
+
+cpt <- paste("Internal standards with detected and assigned features, mean and",
+             "standard deviation of (log2) abundance and RSD.")
+pandoc.table(intern_standard[, c("name", "mean_abd", "sd_abd", "RSD")],
+             style = "rmarkdown", caption = cpt)
+```
+
+In the table also computed the RSD - check that one at the end, should decrease. 
+
+Also do Do RLA plot and boxplot of intensity
+
+## Between sample normalisation
+
+Use filled in features, removes variation that dependent on technical issues,
+such as difference in sample prep and injection. 
+
+MRM: Median Ratio Method
+
+Compute the median of each sample and subsequent median of all the median.. 
+This Results in the median of each sample being the same across the whole
+dataset. 
+To use this the average of total metabolite abundance should be the same across
+all samples. 
+
+```{r}
+#' Compute median and generate normalization factor
+mdns <- apply(assay(res, "raw_filled"), MARGIN = 2, ## should be done on raw ? 
+              median, na.rm = TRUE )
+nf_mdn <- mdns/median(mdns)
+#' Apply to dataset 
+assays(res)$median_filled <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn, '/')
+```
+
+- run for top 500 features per samples ? 
+just write the code 
+for non filled values then here
+
+### Based on IS
+
+RUV - 2 method
+need internal standard
+cannot be ran before unsupervised clustering method !! 
+Metnorm package archived because not updated since 2022, should prb not use it ? 
+But ruv only instead ? 
+
+First determine negative control 
+negative control metabolite: select all metabolite that havew a correlation
+coeff > 0.6 to the average of internal standard.  
+
+```{r ruv-norm-define-ctrls, message = FALSE, warning = FALSE}
+fts_int_std_mean <- colMeans(assay(res, "raw")[intern_standard$feature_id, ],
+                             na.rm = TRUE)
+
+cor_int_std <- apply(log2(assay(res, "raw")),
+                     MARGIN = 1, cor, y = log2(fts_int_std_mean))
+
+neg_ctrls <- which(cor_int_std > 0.6)
+neg_ctrls_int <- which(rownames(res) %in% intern_standard$feature_id)
+```
+
+
+- First step: calculate a component of unwanted variation that is estimated by
+classical methods of factor analysis  
+
+- Second step: fit a linear regression model to log abundance of each metabolite 
+o do that use a design matrix that consist of factor of interest and the
+previously estimated unwanted variation.  
+```{r ruvs, message = FALSE, results = "hide"}
+library(MetNorm)
+
+ruv_rand <- NormalizeRUVRand(t(log2(assay(res, "raw_filled_imputed"))),
+                             ctl = neg_ctrls_int, k = 5,
+                             plotk = FALSE)
+fv_ruvr <- 2^t(ruv_rand$newY)
+
+library(ruv)
+ruv_3 <- RUVIII(t(log2(assay(res, "raw_filled_imputed"))),
+                ctl = neg_ctrls_int, k = 5,
+                M = design.matrix(res$sample_name))
+fv_ruv3 <- 2^t(ruv_3)
+```
+
+
+
+NOMIS
+
+Also been archived since 2020
+
+```{r nomis, warning = FALSE, message = FALSE}
+#' Use the NormalizeMets package
+library(NormalizeMets)
+fv_nms <- 2^t(NormQcmets(
+                t(log2(assay(res, "raw_filled_imputed"))), method = "nomis",
+                qcmets = which(rownames(res) %in% intern_standard$feature_id)
+            )$featuredata)
+#' re-add the internal standards!
+fv_nms <- rbind(
+    fv_nms,
+    assay(res, "raw_filled_imputed")[intern_standard$feature_id, ])
+fv_nms <- fv_nms[rownames(res), ]
+
+```
+
+determine which is best... - how ? 
+coef of variation of QC samples should og down
+coef of variation of IS should go down 
+coeff variation of study samples should not go down too much - 
+
+### Select *best* norm method 
+
+```{r between-sample-choose-best}
+assays(res)$norm <- fv_mrm # change for preferred method
+tmp <- fv_mrm
+tmp[is.na(assay(res_pos, "raw"))] <- NA
+assays(res_pos)$norm_nofill <- tmp
+rm(tmp)
+```
+
+RLA and boxplot on raw_filled vs normalized
+
+## Within batch normalization - no filled in values
+
+
+-- quick notes
+within batch norm 
+ - do proto for both lm and lmrob 
+
+ - Do no flag, do with flags. 
+ - look for highest abs slope plot (should be the best between lm and lmrob
+--
+
+Because the Gap filling evaluation showed quite a significant difference in
+signal between detected values compared to filled in (especially at low signal).
+therefore we will used non-filled values for this next step. 
+
+- remove injection order dependent signal drift
+fit feature-wise linear model (y ~ inj_idx) to the (log2 transformed) abundance
+data of the QC samples within each batch and comapre the slopes for each feature
+between the batches. 
+
+separate analysis: fit the linear model describing an (log scale) injection
+index dependent signal drift to abundances of QC samples separately for the
+different batches. 
+
+remove fitted linear models for features for which valid measurement do not span
+at least 2/3 of the inject index range or for which the mean of the absolute
+residual is larger than 0.5. 
+
+
+re-run all just on QC
+
+### lmrob 
+
+```{r}
+#' take the log2 of the between sample norm results BUT remove filled in data
+tmp <- log2(assay(res, "median_filled"))
+tmp[is.na(assay(res, "raw"))] <- NA
+
+#' Fit linear model y ~ inj_idx
+model_lmrob <- xcms:::rowFitModel(
+    y ~ inj_idx, 
+    data = data.frame(inj_idx = 
+        res$injection_index[res$phenotype == "QC"]), 
+    y = tmp[, res$phenotype == "QC"], 
+    method = "lmrob", 
+    minVals = 3
+)
+
+##' Calculate slopes
+slps_lmrob <- vapply(model, function(z) {
+    if (length(z) > 1) {
+        coefficients(z)[2]
+    } else NA_real_
+}, numeric(1))
+
+#' Set injection index and mean of absolute residual minimum 
+req_prop <- 2/3
+meanmin <- 0.5
+#' Calculate flags 
+flagging <- vapply(model_lmrob, flag_model_inj_range, logical(1),
+                   min_range = diff(range(res$injection_index)) * req_prop) 
+
+#' Plot the distribution of slopes.
+hist(slps_lmrob, breaks = 128, xlab = "slope", main = "lmrob")
+hist(slps_lmrob[which(flagging)], breaks = 128, add = TRUE,
+     col = "#0000ff80")
+```
+
+### lm 
+
+```{r}
+#' take the log2 of the between sample norm results BUT remove filled in data
+tmp <- log2(assay(res, "median_filled"))
+tmp[is.na(assay(res, "raw"))] <- NA
+
+#' Fit linear model y ~ inj_idx
+model_lm <- xcms:::rowFitModel(
+    y ~ inj_idx, 
+    data = data.frame(inj_idx = 
+        res$injection_index[res$phenotype == "QC"]), 
+    y = tmp[, res$phenotype == "QC"], 
+    method = "lm", 
+    minVals = 3
+)
+
+##' Calculate slopes
+slps_lm <- vapply(model, function(z) {
+    if (length(z) > 1) {
+        coefficients(z)[2]
+    } else NA_real_
+}, numeric(1))
+
+#' Set injection index and mean of absolute residual minimum 
+req_prop <- 2/3
+meanmin <- 0.5
+#' Calculate flags 
+flagging <- vapply(model_lm,flag_model_inj_range, logical(1),
+                   min_range = diff(range(res$injection_index)) * req_prop)
+
+##' Plot the distribution of slopes.
+hist(slps_lm, breaks = 128, xlab = "slope", main = "lm")
+hist(slps_lm[which(flagging)], breaks = 128, add = TRUE,
+     col = "#0000ff80")
+```
+
+## between batch norm - no filled in values 
+remove batch specific effect. based on abundance differences in QC samples.
+each feature separately the QC value should be the same, normalize 
+useful for dataset that are measure over years, or different places,... 
+
+## Assessing the effectiveness of the normalization approach 
+    - use of positive and negative control metabolites
+        - choose metabolite that are know to be significantly affected by our
+        factor of interest.... 
+        - if normalisation went well, expect this the positive control to still
+        be there and negative control to not be at the top of the list
+    - distribution of p value
+        - If no differentially abundant metabolites the ideal histogram of
+        p-value from a fitted model should be uniformly distributed between 0
+        and 1  
+        - If differentially abundant metabolite, the ideal histogram should be
+        uniformly distributed but with a peak around 0.
+        
+    - RLA - technical variant 
+    - PCA and HCA 
+
+RSD accross QC samples for all features 
+
