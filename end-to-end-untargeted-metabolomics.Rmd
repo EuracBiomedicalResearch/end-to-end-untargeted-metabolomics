@@ -358,6 +358,8 @@ compounds eluted from the LC column. In essence, a BPC condenses the
 
 ```{r heatmap}
 #' Heatmap from total ion chromatogram
+#' - Create the TIC
+#' - Bin the intensity values within bins of 2 seconds.
 tic <- chromatogram(data, aggregationFun = "sum") |>
   bin(binSize = 2)
 
@@ -402,64 +404,88 @@ Now we can `plot()` these EICs:
 
 #' plot both EIC
 par(mfrow = c(1, 2))
-plot(eic_cystine, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80))
 grid()
 
-plot(eic_Met, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_Met, main = "1- Methylhistidine", col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 ```
 
-... describe EICs
+... describe EICs - for cytine there is a clear concentration difference between
+QCs and study samples.
 
 ## Internal standard chromatographich data (don't keep that for final version)
 
 ```{r EIC extract for internal standard, eval=FALSE, include=FALSE}
 #' get the list
-intern_standard <- read.delim("C:/Users/plouail/Documents/GitHub/lcms-standards/data/internal_standards.txt")
-intern_standard <- intern_standard[-4, ] ## remove succinic acid because no POS
+intern_standard <- read.delim("internal_standards.txt")
+intern_standard <- intern_standard[!is.na(intern_standard$POS), ]
 
 #'generate calcualte formula
-intern_standard[, "mz"] <- mass2mz(intern_standard$formula, adduct = "[M+H]+")[, 1]
-intern_standard[3, "mz"] <- mass2mz(intern_standard[3,"formula"], adduct = "[M+Na]+")[, 1]
+intern_standard$mz <- mapply(intern_standard$formula,
+                             intern_standard$POS, FUN = mass2mz)
 
 
 ##' Extract the EICs no RT
 #' Expand the m/z range by 0.01 on both sides
 intern_standard$mzmin <- intern_standard$mz - 0.01
 intern_standard$mzmax <- intern_standard$mz + 0.01
-intern_standard$rtmin <- 0
-intern_standard$rtmax <- 350
 
-eics <- chromatogram(data, mz = as.matrix(intern_standard[, 14:15]), rt = as.matrix(intern_standard[, 16:17]))
+#' Full EIC
+eics <- chromatogram(data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
 
+dr <- "png/internal_standard/chromatogram/"
+dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 for (i in seq_len(nrow(intern_standard))) {
-    x <- intern_standard[i, c(2,3,4,6)]
-    png(paste("png/internal_standard/chromatogram/chromatogram", x$abbreviation, ".png"))
-    plot(eics[i], main = paste("chromatogram_all_sample_for_", x$abbreviation),
-         col = paste0(col_phenotype[eics$phenotype], 80))
+    png(paste0("png/internal_standard/chromatogram/chromatogram_",
+               intern_standard$abbreviation[i], ".png"),
+        width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
+    plot(eics[i], main = intern_standard$name[i],
+         col = paste0(col_sample, 80))
     grid()
     legend("topright", col = col_phenotype,
            legend = names(col_phenotype), lty = 1)
-    abline(v = x$RT, col = "red", )
+    abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
+#' Notes on the EICs:
+#' - Alanine 13C 15N: signal very low, maybe other ion?
+#' - Arginine: very nice signal, RT a bit off.
+#' - Aspartic acid: very nice signal.
+#' - Carnitine: nothing there, maybe other ion?
+#' - Creatinine: nothing there, maybe other ion?
+#' - Cystine: very nice signal.
+#' - Glucose: nice signal.
+#' - Glutamic acid: very nice signal.
+#' - Glycine: signal low but ~ OK.
+#' - Histidine: very nice signal, RT a bit off.
+#' - Isoleucine: multiple peaks, most likely both leucine and isoleucine.
+#' - Leucine: same as Isoleucine.
+#' - Methionine: nice signal, but some other peaks close by.
+#' - Phenylalanine: nice signal, but some other peaks close by.
+#' - Proline: signal low but ~ OK (maybe other ion?)
+#' - Serine: nice signal.
+#' - Threonine: nice signal.
+#' - Tyrosine: signal low but ~ OK.
+#' - Valine: signal OK. Other peaks close by.
+
 ##'  extract EIC with RT
 
-intern_standard[,"rtmin"] <- intern_standard[, "RT"] - 5
-intern_standard[,"rtmax"] <- intern_standard[, "RT"] + 5
-eics <- chromatogram(data, mz = as.matrix(intern_standard[, 14:15]), rt = as.matrix(intern_standard[, 16:17]))
+intern_standard[, "rtmin"] <- intern_standard$RT - 10
+intern_standard[, "rtmax"] <- intern_standard$RT + 10
+eics <- chromatogram(
+    data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
+    rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
 for (i in seq_len(nrow(intern_standard))) {
-    x <- intern_standard[i, c(2,3,4,6)]
-    #'plot it add expected retention time
-    png(paste("png/internal_standard/EIC/EIC", x$abbreviation, ".png"))
-    plot(eics[i], main = paste("EIC_all_sample_for_", x$abbreviation),
-         col = paste0(col_phenotype[eics$phenotype], 80))
+    png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
+        width = 12, height = 8, units = "cm", pointsize = 4, res = 600)
+    plot(eics[i], main = intern_standard$name[i], col = paste0(col_sample, 80))
     grid()
     legend("topright", col = col_phenotype,
            legend = names(col_phenotype), lty = 1)
-    abline(v = x$RT, col = "red", )
+    abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
 ```
@@ -489,7 +515,8 @@ notable options including:
   (Conley et al. 2014).
 
 The preferred algorithm, in this case, is CentWaveParam, known for its
-effectiveness in handling non-Gaussian shapes commonly encountered in HILIC
+effectiveness in handling non-Gaussian shaped chromatographic peaks or peaks
+with different retention time widths commonly encountered in HILIC
 separation.
 
 ```{r Default centaweve param test}
@@ -567,8 +594,9 @@ find a peak in an Extracted Ion Chromatogram (EIC), the initial troubleshooting
 step should be to increase this range.
 
 ```{r}
-#' With more accurate parameters
-param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
+#' With more accurate parameters; snthresh reduced because peak detection
+#' on an EIC does not have enough data to properly estimate "noise"
+param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2, snthresh = 5)
 
 cystine_test <- findChromPeaks(eic_cystine, param = param)
 head(chromPeaks(cystine_test))
@@ -580,10 +608,12 @@ head(chromPeaks(Met_test))
 ```{r echo=FALSE}
 #' Plot test chromatogram
 par(mfrow = c(1, 2))
-plot(cystine_test, main = "Cystine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(cystine_test, main = "Cystine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample, 40)[chromPeaks(cystine_test)[, "column"]])
 grid()
 
-plot(Met_test, main = "1- Methylhistidine", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(Met_test, main = "1- Methylhistidine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample, 40)[chromPeaks(Met_test)[, "column"]])
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -594,25 +624,28 @@ We can proceed to apply this algorithm to the entire dataset, and then extract
 the EICs for our two test ions to confirm that the process has been successful.
 
 ```{r run find chrompeak on entire dataset}
+#' Using the same settings, but with default snthresh
+param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
+
 data <- findChromPeaks(data, param = param, chunkSize = 5)
 
 #' Test if we find cystine and 1- Methylhistidine again
-eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.05, 0.05),
-                           rt = c(205, 215))
+eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.01, 0.01),
+                            rt = c(205, 215))
 
-eic_Met <- chromatogram(data, mz = Met_mz + c(-0.05, 0.05),
-                           rt = c(180, 195))
+eic_Met <- chromatogram(data, mz = Met_mz + c(-0.01, 0.01),
+                        rt = c(180, 195))
 ```
 
 ```{r plot new eics, echo=FALSE}
 #' Plot
 par(mfrow = c(1, 2))
-plot(eic_cystine, main = "EIC Cystine",
-     col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_cystine, main = "EIC Cystine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 40))
 grid()
 
-plot(eic_Met, main = "EIC 1- Methylhistidine",
-     col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(eic_Met, main = "EIC 1- Methylhistidine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 40))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -635,16 +668,14 @@ pre-selected to illustrate the necessity of the next step:
 
 ```{r echo=FALSE}
 #' Extract m/z-rt regions for selected peaks
-mz_rt <- data.frame(row.names=c("CP114011", "CP113979"),
-                    rtmin = c(155.2120, 181.71800),
-                    rtmax = c(201.0710, 228.13500),
-                    mzmin = c(191.0288,  53.50964),
-                    mzmax = c(191.0527, 53.53183)) |>
-  as.matrix()
+mz_rt <- cbind(rtmin = c(155.2120, 181.71800),
+               rtmax = c(201.0710, 228.13500),
+               mzmin = c(191.0288,  53.50964),
+               mzmax = c(191.0527, 53.53183))
 
 #' Extract the EICs
-eics <- chromatogram(data[3], rt = mz_rt[, c(1,2)],
-                     mz = mz_rt[, c(3,4)])
+eics <- chromatogram(data[3], rt = mz_rt[, c("rtmin", "rtmax")],
+                     mz = mz_rt[, c("mzmin", "mzmax")])
 #' Plot the EICs
 plot(eics)
 ```
@@ -683,7 +714,8 @@ Therefore, we can apply this process to our entire dataset once again.
 ```{r}
 #' Apply on whole dataset
 data <- refineChromPeaks(data, param = param, chunkSize = 5)
-chromPeakData(data)
+chromPeakData(data)$merged |>
+                      table()
 ```
 
 ## Retention time alignment
@@ -692,13 +724,13 @@ We will select for QC samples and observe the BPC again:
 
 ```{r echo=FALSE}
 #' Get QC samples
-QC_samples <-grep("QC", sampleData(data)$phenotype )
+QC_samples <- grep("QC", sampleData(data)$phenotype)
 
 #' extract BPC
 bpc_raw <- data[QC_samples] |>
-  chromatogram(aggregationFun = "max")
+  chromatogram(aggregationFun = "max", chromPeaks = "none")
 
-plot(bpc_raw, peakType = "none", col = paste0(col_phenotype[bpc$phenotype], 80))
+plot(bpc_raw, col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -723,7 +755,7 @@ entire dataset.
 The `binSize =` parameter signifies that the function creates warping functions
 in mz bins of the size desired by the user.
 
-For this example, we will use the *peakgrouping* method. As explained, we first
+For this example, we will use the *PeakGroups* method. As explained, we first
 need to use the `PeakDensityParam` function for correspondence, allowing us to
 run an initial correspondence analysis to group chromatographic peaks across
 samples. This correspondence step will be used later to define all the features
@@ -743,11 +775,11 @@ peak needs to be present in 100% of the samples to be defined as a feature.
 - `bw =` Define the bandwidth.
 
 In non-test datasets, we recommend choosing a `minFraction` between 0.5 and 0.8.
-`binSize` is highly dependent on the machine and shlould be neither too big nor
+`binSize` is highly dependent on the machine and should be neither too big nor
 too small. Testing different values and observing change in alignment can help
 determine it.
 `bw` will be better explained in the correspondence step but essentially
-it determine the smoothness of the curve to determine a peak, the default for
+it defines the smoothness of the curve to determine a peak, the default for
 this parameter (30) is not acceptable, so we would advise to choose a much lower
 value. Either by trial or by visual confirmation as it will be described in
 later. It is important to note that the user should not have really strict and
@@ -757,39 +789,44 @@ corrected.
 ```{r}
 # Grouping the peaks
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
-                        minFraction = 0.9,
-                        binSize = 0.01,
-                        bw = 2)
+                          minFraction = 0.9,
+                          binSize = 0.01,
+                          bw = 2)
 data <- groupChromPeaks(data, param = param)
 ```
 
 The next step enables us to determine anchor peaks for the retention alignment
-process. Which we will then inputinto the alignment function `adjustRtime`. The
+process. Which we will then input into the alignment function `adjustRtime`. The
 parameters for this function are:
 
--`minFraction =`  This has the same definition as above. but here the peaks will
+-`minFraction =`  This has the same definition as above, but here the peaks will
 be evaluate on the overall dataset not by groups (phenotype) as in the previous
 function.
 
 -`span =` This input defines the degree of smoothing by the LOESS function. This
-smoothing allows for regions along the retention time axis to be adjusted. span
-is advised to be set up around 0.4 and 0.6 to avoid overfitting or underfitting.
+smoothing allows for regions along the retention time axis to be adjusted. `span`
+is advised to be set up around 0.4 and 0.6 to avoid overfitting or
+underfitting. Again, it is suggested to use these values and eventually adapt if
+the results from the alignment step are not satisfactory.
 
 - `subsetAdjust` and `subset` Allows for subset alignment. Here we base the
 retention alignment on the QC samples, which will then be applied to the entire
-dataset. We highly recommend using this.
+dataset. We highly recommend using this if in the data set repetitively measured
+QC samples (e.g. sample pools) are available. Note also that for subset-based
+alignment the samples should be ordered by injection index (i.e. in the order in
+which they were measured during the measurement run).
 
 ```{r}
 #' Define parameters of choice
 param <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.5,
-                       subsetAdjust = "average",
-                       subset = QC_samples)
+                         subsetAdjust = "average",
+                         subset = QC_samples)
 
 #' Input in the function
 data <- adjustRtime(data, param = param)
 
 #' See result
-plotAdjustedRtime(data, col = paste0(col_phenotype[bpc$phenotype], 80))
+plotAdjustedRtime(data, col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -805,6 +842,7 @@ dimension, and the adjustment should not be too extreme.
 
 We can also compare before and after alignment. To access data before the
 process, the function `dropAdjustedRtime()` can be used:
+
 ```{r}
 #' get  data before alignment
 data_raw <- dropAdjustedRtime(data)
@@ -815,16 +853,15 @@ We can use this to compare the BPC before and after alignment:
 ```{r bpc before and after, echo=FALSE}
 #' Plot the BPC before and after alignment
 par(mfrow = c(2,1), mar = c(2, 1, 1, 0.5))
-plot(bpc_raw, main = "BPC before alignment",
-     col = paste0(col_phenotype[bpc$sample_type], 80), peakType = "none")
+chromatogram(data_raw, aggregationFun = "max", chromPeaks = "none") |>
+    plot(main = "BPC before alignment", col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 
-plot(chromatogram(data[QC_samples], aggregationFun = "max"),
-     peakType = "none",
-     main = "BPC after alignment",
-     col = paste0(col_phenotype[bpc$sample_type], 80))
+chromatogram(data, aggregationFun = "max", chromPeaks = "none") |>
+    plot(main = "BPC after alignment",
+         col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -837,14 +874,16 @@ Can also observe it in our ions of interest:
 #' Similar comparison but this time filtering to see cystine
 par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
 
-old_eic_cystine <- chromatogram(data_raw[QC_samples],
+old_eic_cystine <- chromatogram(data_raw,
                                 mz = cystine_mz + c(-0.05, 0.05),
                                 rt = c(205, 214))
-plot(old_eic_cystine, main = "Cystine before alignment",  peakType = "none")
+plot(old_eic_cystine, main = "Cystine before alignment",  peakType = "none",
+     col = paste0(col_sample, 80))
 
-eic_cystine <- chromatogram(data[QC_samples],  mz = cystine_mz + c(-0.05, 0.05),
+eic_cystine <- chromatogram(data,  mz = cystine_mz + c(-0.05, 0.05),
                             rt = c(205, 214))
-plot(eic_cystine, "Cystine after alignment", peakType = "none")
+plot(eic_cystine, "Cystine after alignment", peakType = "none",
+     col = paste0(col_sample, 80))
 ```
 
 Little difference
@@ -852,19 +891,25 @@ Little difference
 ```{r echo=FALSE}
 #' Same for Met
 par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
-old_eic_Met <- chromatogram(data_raw[QC_samples], mz = Met_mz + c(-0.05, 0.05),
+old_eic_Met <- chromatogram(data_raw, mz = Met_mz + c(-0.05, 0.05),
                             rt = c(175, 195))
 plot(old_eic_Met, main = "1- Methylhistidine before alignment",
-     peakType = "none")
+     peakType = "none", col = paste0(col_sample, 80))
 
-eic_Met <- chromatogram(data[QC_samples],  mz = Met_mz + c(-0.05, 0.05),
+eic_Met <- chromatogram(data,  mz = Met_mz + c(-0.05, 0.05),
                         rt = c(175, 195))
-plot(eic_Met, main = "1- Methylhistidine after alignment", peakType = "none")
+plot(eic_Met, main = "1- Methylhistidine after alignment",
+     peakType = "none", col = paste0(col_sample, 80))
 ```
 Our test ions did not display any significant differences between the raw and
 adjusted data.
 
-Use another ion as example...
+Use another ion as example... seems that around a rt of 150 there was stronger
+adjustment? potential compounds to check, maybe the internal standards for:
+- leucine
+- methionine
+- phenylalanine
+
 
 ## Correspondence
 
@@ -897,8 +942,17 @@ results of using the default parameters for correspondence.
 #' Default parameter for the grouping and apply them to the test ions BPC
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 30)
 
-plotChromPeakDensity(eic_cystine, param = param)
-plotChromPeakDensity(eic_Met, param = param)
+plotChromPeakDensity(
+    eic_cystine, param = param,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
+    peakPch = 16)
+plotChromPeakDensity(eic_Met, param = param,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(eic_Met)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 20),
+    peakPch = 16)
 ```
 
 For this method, it's crucial to understand that grouping depends on the
@@ -916,8 +970,17 @@ Note:
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                         minFraction = 0.75, binSize = 0.015, bw = 1.8)
 
-plotChromPeakDensity(eic_cystine, param = param)
-plotChromPeakDensity(eic_Met, param = param)
+plotChromPeakDensity(
+    eic_cystine, param = param,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
+    peakPch = 16)
+plotChromPeakDensity(eic_Met, param = param,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(eic_Met)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 20),
+    peakPch = 16)
 ```
 
 
@@ -928,15 +991,20 @@ Now...
 data <- groupChromPeaks(data, param = param)
 ```
 
-
 Test appropriate grouping by examining an area with ions that are isomers:
 1-Methylhistidine and 3-Methylhistidine.
+
 ```{r}
 #' Extract chromatogram with signal for isomers 1-Methylhistidine and
 #' 3-Methylhistidine
 chr_test <- chromatogram(data, mz = Met_mz + c(-0.01, 0.01),
                          rt = c(0, 200),aggregationFun = "max")
-plotChromPeakDensity(chr_test, simulate = FALSE)
+plotChromPeakDensity(
+    chr_test, simulate = FALSE,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(chr_test)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(chr_test)[, "sample"]], 20),
+    peakPch = 16)
 ```
 
 Looks good
@@ -966,6 +1034,7 @@ feature is truly not present in this dataset subset, it could also be a result
 of a failure in the preceding preprocessing steps to identify a peak. It is
 crucial to be able to recover missing values of the latter category as much as
 possible. Let's examine how prevalent missing values are in our present dataset:
+
 ```{r}
 #' Number of missing values
 sum(is.na(featureValues(data)))
@@ -1039,7 +1108,7 @@ against each other.
 
 ```{r Detected vs filled signal}
 
-#' Get only detected signal
+#' Get only detected signal in QC samples
 vals_detect <- featureValues(data, filled = FALSE)[, QC_samples]
 
 #' Get detected and filled-in signal
@@ -1063,12 +1132,12 @@ avg_filled <- avg_filled[has_filled]
 plot(log2(avg_detect), log2(avg_filled),
      xlim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
      ylim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
-     pch = 21, bg = "#00000080")
+     pch = 21, bg = "#00000020", col = "#00000080")
 grid()
 abline(0, 1)
 
 ```
-...
+... looks really nice.
 
 Then calculate statistics on these values. below we fit a linear regression
 line to the data and summarize its results
