@@ -32,24 +32,48 @@ library(ggplot2)
 library(ggfortify)
 ```
 
-## Prep norm 
+## Initial quality assessment
 
 First need to load the results and the preprocessed dataset. We also create a
-new `assay` within the result object and impute the `NA` values 
+new `assay` within the result object and impute the `NA` values. 
+In this analysis, all metabolites are considered. We
+assume that most missing values (i.e. those not removed because of technical
+problems) are representing signal which is below detection limit. In such cases,
+missing values are replaced with random numbers from the uniform distribution
+from the half of smallest measured value to the smallest measured value for that
+analyte.  The uniform distribution is defined with two parameters (minimum and
+maximum) and all values between them have an equal probability of being
+selected.
 
 ```{r}
 #' Load preprocessing results 
 load("SumExp.RData")
 load("data.RData")
 
+#' Define colors for the groups.Different variable if wanna check different things (just for me to remember)
+col_source <- brewer.pal(8, name = "Dark2")[c(5, 4, 3)]
+names(col_source) <- c("QC",           
+                       "CVD",    
+                       "CTR")    
+
+
 #' Impute missing values.
-assays(res)$raw_filled_imputed <- imputeRowMinRand(
-                   assay(res, "raw_filled"), method = "from_to")
 
-#' Use another method for imputing 
+na.unidis <- function(z){ 
+    na <- is.na(z)
+    if (any(na)){
+        min = min(z, na.rm = TRUE)
+        z[na] <- runif(sum(na), min = min/2, max = min)
+    }
+    z
+}
 
-#' Also one assay where just remove NAs
+tmp <- apply(assay(res, "raw_filled"), MARGIN = 1, na.unidis) #' not super sure why the apply transpose
+assays(res)$raw_filled_imputed <- t(tmp)
 
+#' Also one assay where just remove NAs For the PCA
+naomit <- assay(res, "raw_filled") |>
+    na.omit()
 ```
 
 ### PCA unsupervised 
@@ -57,13 +81,53 @@ assays(res)$raw_filled_imputed <- imputeRowMinRand(
 Look for overall biases in batch, sample, injection index,...
 
 ```{r unsupervised checks}
-tmp_imp <- assay(res, "raw_filled_imputed")
-pca_res <- prcomp(t(log2(tmp_imp)), scale = FALSE, center = TRUE)
 
-autoplot(pca_res, data = data.frame(colData(res)), colour = 'phenotype')
+pca_res <- prcomp(t(log2(naomit)), scale = FALSE, center = TRUE)
+
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
+plot_pca(pca_res, pc_x = 1, pc_y = 2, col = col_source)
+legend("topleft", inset = c(0, -0.24), col = col_source, legend = names(col_source), lty=1, lwd = 2, xpd = TRUE, ncol = 3, cex = 0.7, title = "Phenotype", title.cex = 0.8)
+plot_pca(pca_res, pc_x = 3, pc_y = 4, col = col_source) #' idk if need that one
 ```
 
-### Internal standard: 
+### Intensity evaluation 
+
+Counts of non missing values and feature abundance distribution
+
+```{r counts}
+layout(mat = matrix(1:2, ncol = 1), height = c(0.2, 0.8))
+
+par(mar = c(0.2, 4.5, 0.2, 3))
+barplot(apply(assay(res, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
+        col = col_source, ylab = "features", xaxt = "n", space = 0.012)
+boxplot(log2(assay(res, "raw")), xaxt = "n", ylab = "log2 abundance", col = col_source, outline=FALSE, medlty = "blank", border = col_source,boxwex = 0.99 )
+points(colMeans(log2(assay(res, "raw")), na.rm = TRUE), type = "l")
+grid(nx = NA, ny = NULL)
+```
+
+
+RLA 
+
+```{r rla-plot raw and filled, echo = FALSE, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
+par(mfrow = c(2, 1), mar = c(0.2, 4.5, 2.5, 3))
+boxplot(rowRla(assay(res, "raw"), group = sampleData(data)$phenotype), cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA",
+        border = paste0(col_source, 40), notch = TRUE, cex.main = 1,
+        outline = FALSE, xaxt = "n", main = "Raw data", boxwex = 1)
+grid(nx = NA, ny = NULL)
+legend("topleft", inset = c(0, -0.2), col = col_source, legend = names(col_source), lty=1, lwd = 2, xpd = TRUE, ncol = 3, cex = 0.7)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "raw_filled"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "Filled in data", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+```
+
+### Internal standard
 We want to select the internal standard for which we have features defined. 
 
 ```{r}
@@ -104,66 +168,90 @@ for (i in seq_len(nrow(intern_standard))) {
 }
 
 #' prepare PCA 
-pc_int <- prcomp(t(log2(tmp_imp[intern_standard$feature_id, ])), scale = FALSE,
+pc_int <- prcomp(t(log2(naomit[intern_standard$feature_id, ])), scale = FALSE,
                  center = TRUE)
 autoplot(pc_int, data = data.frame(colData(res)), colour = 'phenotype')
 ```
  
 Describe distribution of IS.. 
 
-```{r internal-standard-table, echo=TRUE, message=FALSE, warning=FALSE, results="asis"}
+```{r internal-standard-table }
 #' table of internal standards with mean and sd of abundances (in log2 scale)
 tmp_fv <- assay(res, "raw")[intern_standard$feature_id, ]
 intern_standard$mean_abd <- rowMeans(log2(tmp_fv), na.rm = TRUE)
 intern_standard$sd_abd <- rowSds(log2(tmp_fv), na.rm = TRUE)
-intern_standard$RSD <- rowRsd(tmp_fv, na.rm = TRUE)
+intern_standard$CV_raw <- rowRsd(tmp_fv, na.rm = TRUE)
 
 cpt <- paste("Internal standards with detected and assigned features, mean and",
              "standard deviation of (log2) abundance and RSD.")
-pandoc.table(intern_standard[, c("name", "mean_abd", "sd_abd", "RSD")],
+pandoc.table(intern_standard[, c("name", "mean_abd", "sd_abd", "CV_raw")],
              style = "rmarkdown", caption = cpt)
 ```
 
-In the table also computed the RSD - check that one at the end, should decrease. 
-
-Also do Do RLA plot and boxplot of intensity
-
 ## Between sample normalisation
 
-Use filled in features, removes variation that dependent on technical issues,
+Use filled in features, removes variation that dependent on technical issues, 
 such as difference in sample prep and injection. 
 
-MRM: Median Ratio Method
+### MRM: Median Ratio Method
 
 Compute the median of each sample and subsequent median of all the median.. 
-This Results in the median of each sample being the same across the whole
+This results in the median of each sample being the same across the whole
 dataset. 
 To use this the average of total metabolite abundance should be the same across
-all samples. 
+all samples.
 
 ```{r}
 #' Compute median and generate normalization factor
 mdns <- apply(assay(res, "raw_filled"), MARGIN = 2, ## should be done on raw ? 
               median, na.rm = TRUE )
 nf_mdn <- mdns/median(mdns)
-#' Apply to dataset 
+#' divide dataset by median of median 
 assays(res)$median_filled <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn, '/')
 ```
 
-- run for top 500 features per samples ? 
-just write the code 
-for non filled values then here
+- run for top 500 features per samples 
 
-### Based on IS
+Motivate this method because there is higher probabilityh that the 500 top
+features for each sample should have similar average total metabolites abundance
+across all samples. 
+```{r}
+# Get the top 500 features for each column
+tmp_500 <- apply(assay(res, "raw"), MARGIN = 2, function(x) order(x, decreasing = TRUE)[1:500])
+
+# Initialize a matrix to store the subsetted values
+top_500_fts <- matrix(NA, nrow = 500, ncol = ncol(tmp_500))
+
+# Subset the values for each column based on the top 500 features
+for (i in seq_len(ncol(tmp_500))) {
+  top_500_fts[, i] <- assay(res, "raw")[tmp_500[, i], i]
+}
+### Tried to simplify here 
+#top_500_fts <- apply(tmp_500, MARGIN = 2, function(indices) assay(res, "raw")[indices, ]) # not really sure why this does not iterates properly over columns, I feel like this should be the solution.. 
+
+#top_500_fts <- assay(res, "raw")[tmp_500] # does not work but would have been so nice to have something like
+
+
+#' Compute median and generate normalization factor
+mdns <- apply(top_500_fts, MARGIN = 2, median )
+nf_mdn <- mdns/median(mdns)
+#' divide dataset by median of median 
+assays(res)$median_filled_500 <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn, '/')
+```
+
+
+### Methods based on IS
 
 RUV - 2 method
-need internal standard
-cannot be ran before unsupervised clustering method !! 
-Metnorm package archived because not updated since 2022, should prb not use it ? 
-But ruv only instead ? 
+cannot be ran before unsupervised clustering method 
+
+Metnorm package archived because not updated since 2022 - For now using it, if
+decide it's good enough, we can maybe rewrite the code (addition to the
+externalTools package that we thought about ? or a specialized MsNorm package)
+or something and reference them ? 
 
 First determine negative control 
-negative control metabolite: select all metabolite that havew a correlation
+negative control metabolite: select all metabolite that have a correlation
 coeff > 0.6 to the average of internal standard.  
 
 ```{r ruv-norm-define-ctrls, message = FALSE, warning = FALSE}
@@ -176,7 +264,6 @@ cor_int_std <- apply(log2(assay(res, "raw")),
 neg_ctrls <- which(cor_int_std > 0.6)
 neg_ctrls_int <- which(rownames(res) %in% intern_standard$feature_id)
 ```
-
 
 - First step: calculate a component of unwanted variation that is estimated by
 classical methods of factor analysis  
@@ -191,15 +278,15 @@ ruv_rand <- NormalizeRUVRand(t(log2(assay(res, "raw_filled_imputed"))),
                              ctl = neg_ctrls_int, k = 5,
                              plotk = FALSE)
 fv_ruvr <- 2^t(ruv_rand$newY)
+assays(res)$ruvr <- fv_ruvr
 
 library(ruv)
 ruv_3 <- RUVIII(t(log2(assay(res, "raw_filled_imputed"))),
                 ctl = neg_ctrls_int, k = 5,
                 M = design.matrix(res$sample_name))
 fv_ruv3 <- 2^t(ruv_3)
+assays(res)$ruv3 <- fv_ruv3
 ```
-
-
 
 NOMIS
 
@@ -217,99 +304,207 @@ fv_nms <- rbind(
     fv_nms,
     assay(res, "raw_filled_imputed")[intern_standard$feature_id, ])
 fv_nms <- fv_nms[rownames(res), ]
-
+assays(res)$NOMIS <- fv_nms
 ```
 
-determine which is best... - how ? 
+
+
+### Evluate and select *best* norm method 
+
+#### Coefficient variation 
 coef of variation of QC samples should og down
+```{r}
+index_QC <- res$phenotype == "QC"
+
+QC <- cbind(CV_Raw = rowRsd(assay(res, "raw")[, index_QC], na.rm = TRUE),
+            CV_MRM = rowRsd(
+    assay(res, "median_filled")[, index_QC], na.rm = TRUE),
+    CV_MRM_500 = rowRsd(
+    assay(res, "median_filled_500")[, index_QC], na.rm = TRUE),
+    CV_ruvr = rowRsd(
+    assay(res, "ruvr")[, index_QC], na.rm = TRUE),
+    CV_ruv3 = rowRsd(
+    assay(res, "ruv3")[, index_QC], na.rm = TRUE),
+    CV_NOMIS = rowRsd(
+    assay(res, "NOMIS")[, index_QC], na.rm = TRUE)
+)
+
+#' Number <0.3 
+QC_summary <- matrix(ncol= ncol(QC), dimnames = list("CV <0.3"))
+for (i in seq_len(ncol(QC))){
+    QC_summary["CV <0.3",i] <- sum(QC[, i] < 0.3, na.rm = TRUE)
+}
+colnames(QC_summary) <- colnames(QC)
+QC_summary
+#' Realized that Anne did the mean RSD, could combine it in this table 
+#' actually could make this table combined with the study sample also. for better comparison
+
+#' Quantile
+QC_df <- data.frame(raw = quantile(QC[, "CV_Raw"], na.rm = TRUE),
+                     MRM = quantile(QC[, "CV_MRM"], na.rm = TRUE),
+                     MRM_500 = quantile(QC[, "CV_MRM_500"], na.rm = TRUE),
+                     ruvr = quantile(QC[, "CV_ruvr"], na.rm = TRUE),
+                     RUVIII = quantile(QC[, "CV_ruv3"], na.rm = TRUE),
+                     NOMIS = quantile(QC[, "CV_NOMIS"], na.rm = TRUE)
+                     )
+cpt <- paste0("Distribution of CV values across QC samples for the raw ",
+              "and between-sample normalized data.")
+pandoc.table(QC_df, style = "rmarkdown", caption = cpt)
+```
+
+
 coef of variation of IS should go down 
-coeff variation of study samples should not go down too much - 
+```{r}
+intern_standard$CV_MRM <- rowRsd(
+    assay(res, "median_filled")[intern_standard$feature_id, ], na.rm = TRUE)
+intern_standard$CV_MRM_500 <- rowRsd(
+    assay(res, "median_filled_500")[intern_standard$feature_id, ], na.rm = TRUE)
+intern_standard$CV_ruvr <- rowRsd(
+    assay(res, "ruvr")[intern_standard$feature_id, ], na.rm = TRUE)
+intern_standard$CV_ruv3 <- rowRsd(
+    assay(res, "ruv3")[intern_standard$feature_id, ], na.rm = TRUE)
+intern_standard$CV_NOMIS <- rowRsd(
+    assay(res, "NOMIS")[intern_standard$feature_id, ], na.rm = TRUE)
 
-### Select *best* norm method 
+cpt <- paste("Internal standards with detected and assigned features coefficient
+             of variation before and after different method of normalization.")
+pandoc.table(intern_standard[, c("abbreviation", "CV_raw", "CV_MRM", "CV_MRM_500", "CV_ruvr", 
+                                 "CV_ruv3", "CV_NOMIS")],
+             style = "rmarkdown", caption = cpt)
+```
+Would be nice to plot this maybe to make is more readable ? 
+At first glance it seems that MRM 500 works better than MRM. and RUV random  completely remove variation.. .
 
-```{r between-sample-choose-best}
-assays(res)$norm <- fv_mrm # change for preferred method
-tmp <- fv_mrm
+Study samples
+coeff variation of study samples should not go down too much
+
+```{r}
+index_study <- res$phenotype %in% c("CTR", "CVD")
+
+study_sample <- cbind(CV_Raw = rowRsd(assay(res, "raw")[, index_study], na.rm = TRUE),
+            CV_MRM = rowRsd(
+    assay(res, "median_filled")[, index_study], na.rm = TRUE),
+    CV_MRM_500 = rowRsd(
+    assay(res, "median_filled_500")[, index_study], na.rm = TRUE),
+    CV_ruvr = rowRsd(
+    assay(res, "ruvr")[, index_study], na.rm = TRUE),
+    CV_ruv3 = rowRsd(
+    assay(res, "ruv3")[, index_study], na.rm = TRUE),
+    CV_NOMIS = rowRsd(
+    assay(res, "NOMIS")[, index_study], na.rm = TRUE)
+)
+
+#' Number <0.3 
+study_summary <- matrix(ncol= ncol(study_sample), dimnames = list("CV <0.3"))
+for (i in seq_len(ncol(study_sample))){
+    study_summary["CV <0.3",i] <- sum(study_sample[, i] < 0.3, na.rm = TRUE)
+}
+colnames(study_summary) <- colnames(study_sample)
+study_summary
+
+#' Quantile
+study_df <- data.frame(raw = quantile(study_sample[, "CV_Raw"], na.rm = TRUE),
+                     MRM = quantile(study_sample[, "CV_MRM"], na.rm = TRUE),
+                     MRM_500 = quantile(study_sample[, "CV_MRM_500"], na.rm = TRUE),
+                     ruvr = quantile(study_sample[, "CV_ruvr"], na.rm = TRUE),
+                     RUVIII = quantile(study_sample[, "CV_ruv3"], na.rm = TRUE),
+                     NOMIS = quantile(study_sample[, "CV_NOMIS"], na.rm = TRUE)
+                     )
+cpt <- paste0("Distribution of CV values across study samples for the raw ",
+              "and between-sample normalized data.")
+pandoc.table(study_df, style = "rmarkdown", caption = cpt)
+```
+
+
+#### RLA 
+```{r rla-plots evaluate norm method, echo = FALSE, fig.cap = "RLA plot for the raw data and different sample normalization method. Note: outliers are not drawn.", fig.width = 5, fig.height = 14}
+par(mfrow = c(7, 1), mar = c(0.2, 4.5, 3, 3))
+
+boxplot(rowRla(assay(res, "raw"), group = sampleData(data)$phenotype), cex = 0.5, pch = 16,         col = col_source, ylab = "RLA",
+        border = paste0(col_source, 40), notch = TRUE, cex.main = 1,
+        outline = FALSE, xaxt = "n", main = "Raw data", boxwex = 1)
+grid(nx = NA, ny = NULL)
+legend("topleft", inset = c(0, -0.2), col = col_source, legend = names(col_source), lty=1, lwd = 2, xpd = TRUE, ncol = 3, cex = 0.7)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "median_filled"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "MRM", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "median_filled_500"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "MRM 500", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "ruvr"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "RUV random", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "ruv3"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "RUV III", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "NOMIS"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "NOMIS", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+legend("bottomleft", inset = c(0, -0.2), col = col_source, legend = names(col_source), lty=1, lwd = 2, xpd = TRUE, ncol = 3, cex = 0.7)
+```
+
+### Apply to dataset 
+
+```{r between-sample-choose-best, eval=FALSE, include=FALSE}
+# remove the assay or just rewrite code better as to not actually put the assay in the SumExp object 
+
+#' create another assay norm removing the filled data. 
+tmp <- # put here 
 tmp[is.na(assay(res_pos, "raw"))] <- NA
 assays(res_pos)$norm_nofill <- tmp
 rm(tmp)
+
+#' once settled on one method, i will change code before and after to match this
 ```
 
-RLA and boxplot on raw_filled vs normalized
-
-## Within batch normalization - no filled in values
-
-
--- quick notes
-within batch norm 
- - do proto for both lm and lmrob 
-
- - Do no flag, do with flags. 
- - look for highest abs slope plot (should be the best between lm and lmrob
---
-
-Because the Gap filling evaluation showed quite a significant difference in
-signal between detected values compared to filled in (especially at low signal).
-therefore we will used non-filled values for this next step. 
+## Within batch normalization 
 
 - remove injection order dependent signal drift
 fit feature-wise linear model (y ~ inj_idx) to the (log2 transformed) abundance
 data of the QC samples within each batch and comapre the slopes for each feature
 between the batches. 
 
-separate analysis: fit the linear model describing an (log scale) injection
-index dependent signal drift to abundances of QC samples separately for the
-different batches. 
+Because the Gap filling evaluation showed quite a significant difference in
+signal between detected values compared to filled in (especially at low signal).
+therefore we will used non-filled values for this next step. 
 
-remove fitted linear models for features for which valid measurement do not span
-at least 2/3 of the inject index range or for which the mean of the absolute
-residual is larger than 0.5. 
+Flags: remove fitted linear models for features for which valid
+measurement do not span at least 2/3 of the inject index range or for which the
+mean of the absolute residual is larger than 0.5. 
 
+ - look for highest abs slope plot
 
-re-run all just on QC
-
-### lmrob 
-
-```{r}
-#' take the log2 of the between sample norm results BUT remove filled in data
-tmp <- log2(assay(res, "median_filled"))
-tmp[is.na(assay(res, "raw"))] <- NA
-
-#' Fit linear model y ~ inj_idx
-model_lmrob <- xcms:::rowFitModel(
-    y ~ inj_idx, 
-    data = data.frame(inj_idx = 
-        res$injection_index[res$phenotype == "QC"]), 
-    y = tmp[, res$phenotype == "QC"], 
-    method = "lmrob", 
-    minVals = 3
-)
-
-##' Calculate slopes
-slps_lmrob <- vapply(model, function(z) {
-    if (length(z) > 1) {
-        coefficients(z)[2]
-    } else NA_real_
-}, numeric(1))
-
-#' Set injection index and mean of absolute residual minimum 
-req_prop <- 2/3
-meanmin <- 0.5
-#' Calculate flags 
-flagging <- vapply(model_lmrob, flag_model_inj_range, logical(1),
-                   min_range = diff(range(res$injection_index)) * req_prop) 
-
-#' Plot the distribution of slopes.
-hist(slps_lmrob, breaks = 128, xlab = "slope", main = "lmrob")
-hist(slps_lmrob[which(flagging)], breaks = 128, add = TRUE,
-     col = "#0000ff80")
-```
-
-### lm 
+### linear model
 
 ```{r}
 #' take the log2 of the between sample norm results BUT remove filled in data
-tmp <- log2(assay(res, "median_filled"))
+tmp <- log2(assay(res, "median_filled_500")) 
 tmp[is.na(assay(res, "raw"))] <- NA
 
 #' Fit linear model y ~ inj_idx
@@ -323,7 +518,7 @@ model_lm <- xcms:::rowFitModel(
 )
 
 ##' Calculate slopes
-slps_lm <- vapply(model, function(z) {
+slps_lm <- vapply(model_lm, function(z) {
     if (length(z) > 1) {
         coefficients(z)[2]
     } else NA_real_
@@ -340,28 +535,229 @@ flagging <- vapply(model_lm,flag_model_inj_range, logical(1),
 hist(slps_lm, breaks = 128, xlab = "slope", main = "lm")
 hist(slps_lm[which(flagging)], breaks = 128, add = TRUE,
      col = "#0000ff80")
+
+#' Split into excluded and good mdls
+mdls_excluded <- model_lm[which(flagging)]
+
+#' remove model fits for flagged slopes
+model_lm[unique(which(flagging))] <- NA
+slps_lm[unique(which(flagging))] <- NA
+
+fts_adj <- sort(unique(
+    names(model_lm)[!is.na(model_lm)]))
 ```
 
-## between batch norm - no filled in values 
-remove batch specific effect. based on abundance differences in QC samples.
-each feature separately the QC value should be the same, normalize 
-useful for dataset that are measure over years, or different places,... 
+The table below lists the number of features for which the model was fitted and
+the number of features for which model fitting was skipped or discarded.
 
-## Assessing the effectiveness of the normalization approach 
-    - use of positive and negative control metabolites
-        - choose metabolite that are know to be significantly affected by our
-        factor of interest.... 
-        - if normalisation went well, expect this the positive control to still
-        be there and negative control to not be at the top of the list
-    - distribution of p value
-        - If no differentially abundant metabolites the ideal histogram of
-        p-value from a fitted model should be uniformly distributed between 0
-        and 1  
-        - If differentially abundant metabolite, the ideal histogram should be
-        uniformly distributed but with a peak around 0.
-        
-    - RLA - technical variant 
-    - PCA and HCA 
+```{r fit-model-table, message = FALSE, echo = FALSE, results = "asis"}
+tab <- cbind(dataset = c(length(model_lm),
+                         length(which(flagging)),
+                         sum(!is.na(model_lm)))
+             )
+rownames(tab) <- c("total features", "low inj idx range",
+                   "valid model fits")
+cptn <- paste("Numbers of features for which an injection index dependent",
+              "model could be fitted.")
+pandoc.table(tab, style = "rmarkdown", caption = cptn)
+```
+```{r features-large-slopes-plots, echo = FALSE, message = FALSE, warning = FALSE}
+#' Plotting all features with an absolute slope larger than some value.
+#' Plots are created but not displayed here.
+#' Features with absolute slope > 0.025, maybe more ?
+dr <- "largest_slopes/above_below_0.025/"
+dir.create(dr, showWarnings = FALSE)
+fts <- names(model_lm)[which(abs(slps_lm) > 0.025)]
+for (i in fts) {
+    png(paste0(dr, i, ".png"), width = 14, height = 7, pointsize = 6,
+        res = 200, units = "cm")
+    plot(x = colData(res)$injection_index,
+         y = log2(assay(res, "median_filled_500")[i, ]), xlim = c(0,100),
+         ylim = c(0,20)) ## need to change the range to adapt to each slopes
+    abline(0, slps_lm[i], col = "red")
+dev.off()
+}
+#' Not super sure about that, would like to discuss
+#' Some have pretty bad 
+```
 
-RSD accross QC samples for all features 
+```{r}
+#' Plot data for features excluded because their data points do not span a
+#' large enough portion of the injection range and residual larger than 0.5.
+#' Identify top 20 with largest slopes
+dr <- "largest_slopes/low_span/"
+dir.create(dr, showWarnings = FALSE)
+tmp_slps <- vapply(mdls_excluded, function(z) {
+    coefficients(z)[2]
+}, numeric(1))
+fts <- names(sort(abs(tmp_slps), decreasing = TRUE))[1:20]
 
+for (i in fts) {
+    png(paste0(dr, i, ".png"), width = 14, height = 7, pointsize = 6,
+        res = 200, units = "cm")
+    plot(x = colData(res)$injection_index,
+         y = log2(assay(res, "median_filled_500")[i, ]), xlim = c(0,100),
+         ylim = c(0,20)) ## need to change the range to adapt to each slopes
+    abline(0, tmp_slps[i], col = "red")
+dev.off()
+}
+```
+
+
+
+```{r}
+#' Applying the adjustment to the full (filled-in) data.
+tmp <- assay(res, "median_filled_500")
+norm_before <- tmp
+tmp <- xcms:::applyModelAdjustment(
+                             y = log2(tmp), lmod = model_lm,
+                             data =  data.frame(inj_idx = res$injection_index),
+                             shiftNegative = "replaceHalfMin")
+
+assays(res)$norm <- 2^tmp
+tmp[is.na(assay(res, "raw"))] <- NA
+assays(res)$norm_nofill <- 2^tmp
+
+rm(tmp)
+```
+
+
+## between batch norm 
+
+Eliminate batch-specific effects by considering abundance differences in QC
+samples across various batches. Ensure that for each feature, the QC values are
+consistent and normalize accordingly. This approach is beneficial for datasets
+measured over extended periods or diverse locations.
+
+However, this method is not applicable to the current dataset since there are
+no distinct batches as such. Ideally, in the context of a bigger dataset,
+batches should each have their own QC samples, allowing inter-batch comparisons
+to be conducted using them.
+
+## Assessing overall effectiveness of the normalization approach
+
+### PCA 
+```{r}
+#' Also one assay where just remove NAs For the PCA
+naomit <- assay(res, "raw_filled") |>
+    na.omit()
+naomit_norm <- assay(res, "norm") |>
+    na.omit()
+
+# Full data before after
+pca_res <- prcomp(t(log2(naomit)), scale = FALSE, center = TRUE)
+pca_res_norm <- prcomp(t(log2(naomit)), scale = FALSE, center = TRUE)
+# Internal standard before after
+pc_int <- prcomp(t(log2(naomit[intern_standard$feature_id, ])), scale = FALSE,
+                 center = TRUE)
+pc_int_norm <- prcomp(t(log2(naomit_norm[intern_standard$feature_id, ])), scale = FALSE,
+                 center = TRUE)
+
+par(mfrow = c(2, 2), mar = c(1, 4, 3, 1))
+plot_pca(pca_res, pc_x = 1, pc_y = 2, col = col_source)
+legend("topleft", col = col_source, legend = names(col_source), lty=1, lwd = 2,
+       xpd = TRUE, ncol = 3, cex = 0.7, title = "Phenotype", title.cex = 0.8,
+       bty = "n")
+title(main = "Full data set PCA before norm", cex = 0.5)
+plot_pca(pca_res_norm, pc_x = 1, pc_y = 2, col = col_source)
+title(main = "Full data set PCA after norm", cex = 0.5)
+
+plot_pca(pc_int, pc_x = 1, pc_y = 2, col = col_source)
+legend("topleft", col = col_source, legend = names(col_source), lty=1, lwd = 2,
+       xpd = TRUE, ncol = 3, cex = 0.7, title = "Phenotype", title.cex = 0.8,
+       bty = "n")
+title(main = "Internal standard PCA before norm", cex = 0.5)
+plot_pca(pc_int_norm, pc_x = 1, pc_y = 2, col = col_source)
+title(main = "Internal standard PCA after norm", cex = 0.5)
+
+```
+
+### RLA
+
+```{r rla-plot after norm, echo = FALSE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn."}
+par(mfrow = c(2, 1), mar = c(1, 4, 3, 1))
+
+boxplot(rowRla(assay(res, "raw"), group = sampleData(data)$phenotype), cex = 0.5, pch = 16,         col = col_source, ylab = "RLA",
+        border = paste0(col_source, 40), notch = TRUE, cex.main = 1,
+        outline = FALSE, xaxt = "n", main = "Raw data", boxwex = 1)
+grid(nx = NA, ny = NULL)
+legend("topleft", inset = c(0, -0.2), col = col_source, legend = names(col_source), lty=1, lwd = 2, xpd = TRUE, ncol = 3, cex = 0.7, bty = "n")
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "norm"), group = sampleData(data)$phenotype),
+        cex = 0.5, pch = 16, 
+        col = col_source, ylab = "RLA", 
+        border = paste0(col_source, 40), notch = TRUE, boxwex = 1, 
+        outline = FALSE, xaxt = "n", main = "After normalization", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+```
+
+RSD across QC samples for all features 
+
+### CV 
+
+In QC samples 
+```{r}
+index_QC <- res$phenotype == "QC"
+
+QC <- cbind(CV_Raw = rowRsd(assay(res, "raw")[, index_QC], na.rm = TRUE),
+            CV_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE)
+)
+
+#' Number <0.3 
+QC_summary <- matrix(ncol= ncol(QC), dimnames = list("CV <0.3"))
+for (i in seq_len(ncol(QC))){
+    QC_summary["CV <0.3",i] <- sum(QC[, i] < 0.3, na.rm = TRUE)
+}
+colnames(QC_summary) <- colnames(QC)
+QC_summary
+
+#' Quantile
+QC_df <- data.frame(raw = quantile(QC[, "CV_Raw"], na.rm = TRUE),
+                     Norm = quantile(QC[, "CV_norm"], na.rm = TRUE)
+                     )
+cpt <- paste0("Distribution of CV values across QC samples for the raw ",
+              "normalized data.")
+pandoc.table(QC_df, style = "rmarkdown", caption = cpt)
+```
+It increases... 
+
+
+IS
+```{r}
+intern_standard$CV_norm <- rowRsd(
+    assay(res, "norm")[intern_standard$feature_id, ], na.rm = TRUE)
+
+cpt <- paste("Internal standards with detected and assigned features coefficient
+             of variation before and after different method of normalization.")
+pandoc.table(intern_standard[, c("abbreviation", "CV_raw", "CV_norm")],
+             style = "rmarkdown", caption = cpt)
+```
+Some lower a little bit some increases a little bit.. 
+
+Study samples 
+```{r}
+index_study <- res$phenotype %in% c("CTR", "CVD")
+
+study_sample <- cbind(CV_Raw = rowRsd(assay(res, "raw")[, index_study],
+                                      na.rm = TRUE),
+            CV_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
+)
+
+#' Number <0.3 
+study_summary <- matrix(ncol= ncol(study_sample), dimnames = list("CV <0.3"))
+for (i in seq_len(ncol(study_sample))){
+    study_summary["CV <0.3",i] <- sum(study_sample[, i] < 0.3, na.rm = TRUE)
+}
+colnames(study_summary) <- colnames(study_sample)
+study_summary
+
+#' Quantile
+study_df$norm <- quantile(study_sample[, "CV_norm"], na.rm = TRUE)
+cpt <- paste0("Distribution of CV values across study samples for the raw ",
+              "and between-sample normalized data.")
+pandoc.table(study_df[c("raw", "norm")], style = "rmarkdown", caption = cpt)
+```
+
+Increases quite significantly i think... 
