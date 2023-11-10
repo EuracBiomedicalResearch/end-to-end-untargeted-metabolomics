@@ -135,6 +135,7 @@ abline(h = 0, lty=3, lwd = 1, col = "black")
 ```
 
 ### Internal standard
+
 We want to select the internal standard for which we have features defined. 
 
 ```{r include=FALSE}
@@ -243,9 +244,9 @@ for (i in seq_len(ncol(tmp_500))) {
   top_500_fts[, i] <- assay(res, "raw")[tmp_500[, i], i]
 }
 ### Tried to simplify here 
-#top_500_fts <- apply(tmp_500, MARGIN = 2, function(indices) assay(res, "raw")[indices, ]) # not really sure why this does not iterates properly over columns, I feel like this should be the solution.. 
-
-#top_500_fts <- assay(res, "raw")[tmp_500] # does not work but would have been so nice to have something like
+#top_500_fts <- apply(tmp_500, MARGIN = 2, function(indices) 
+#assay(res, "raw")[indices, ])
+#' not really sure why this does not iterates properly over columns
 
 #' Compute median and generate normalization factor
 mdns <- apply(top_500_fts, MARGIN = 2, median )
@@ -399,7 +400,6 @@ pandoc.table(intern_standard[, c("abbreviation", "CV_raw", "CV_MRM",
                                  "CV_ruv3", "CV_NOMIS")],
              style = "rmarkdown", caption = cpt)
 ```
-Would be nice to plot this maybe to make is more readable ? 
 At first glance it seems that MRM 500 works better than MRM. and RUV random
 completely remove variation.. .
 
@@ -443,7 +443,9 @@ cpt <- paste0("Distribution of CV values across study samples for the raw ",
               "and between-sample normalized data.")
 pandoc.table(study_df, style = "rmarkdown", caption = cpt)
 ```
-
+ruv random does manage to both decrease CV for QC and keep ity normal for study
+sample. 
+But it is really weird how much the QV and IS CV is *too* decreased. 
 
 #### RLA 
 ```{r rla-plots evaluate norm method, include=FALSE, fig.cap = "RLA plot for the raw data and different sample normalization method. Note: outliers are not drawn.", fig.width = 5, fig.height = 14}
@@ -597,6 +599,7 @@ cptn <- paste("Numbers of features for which an injection index dependent",
               "model could be fitted.")
 pandoc.table(tab, style = "rmarkdown", caption = cptn)
 ```
+
 ```{r features-large-slopes-plots, message=FALSE, warning=FALSE, include=FALSE}
 #' Plotting all features with an absolute slope larger than some value.
 #' Plots are created but not displayed here.
@@ -759,7 +762,6 @@ cpt <- paste0("Distribution of CV values across QC samples for the raw ",
 pandoc.table(QC_df, style = "rmarkdown", caption = cpt)
 ```
 It increases... 
-
 
 IS
 ```{r include=FALSE}
