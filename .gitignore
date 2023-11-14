@@ -9,3 +9,4 @@ chris_scanning*
 *.html
 *.pdf
 images/
+*.sqlite
