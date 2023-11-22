@@ -621,7 +621,7 @@ plot(cystine_test, main = "Cystine", col = paste0(col_sample, 80),
 grid()
 
 plot(met_test, main = "Methionine", col = paste0(col_sample, 80),
-     peakBg = paste0(col_sample, 40)[chromPeaks(his_test)[, "column"]])
+     peakBg = paste0(col_sample, 40)[chromPeaks(met_test)[, "column"]])
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -965,7 +965,7 @@ smoothness of the density curve and can be configured with the parameter `bw`.
 As seen above, the smoothness is too high to properly group our features. When
 looking at the default parameters, we can observe that indeed, the `bw`
 parameter is set to `bw = 30`. To accommodate the multiple peaks present in our
-1-MethylMethionine Extracted Ion Chromatogram (EIC), we need to reduce this
+1-Methylhistidine Extracted Ion Chromatogram (EIC), we need to reduce this
 parameter. Let's see what happens when it is lowered to `bw = 2`.
 
 Note:
@@ -999,8 +999,8 @@ Test appropriate grouping by examining an area with ions that are isomers:
 1-MethylMethionine and 3-MethylMethionine.
 
 ```{r}
-#' Extract chromatogram with signal for isomers 1-MethylMethionine and
-#' 3-MethylMethionine
+#' Extract chromatogram with signal for isomers 1-Methylhistidine and
+#' 3-Methylhistidine
 chr_test <- chromatogram(data, mz = met_mz + c(-0.01, 0.01),
                          rt = c(0, 200),aggregationFun = "max")
 plotChromPeakDensity(
@@ -1056,12 +1056,11 @@ of samples.
 head(is.na(featureValues(data)))
 
 #' Extract the m/z-rt region for selected peaks
-mz_rt <- data.frame(row.names=c("FT00031", "FT00039"),
+mz_rt <- cbind(row.names=c("FT00031", "FT00039"),
                     rtmin = c(175.8360, 199.7302),
                     rtmax = c(183.6598, 209.0151),
                     mzmin = c(60.04525, 60.51039),
-                    mzmax = c(60.04623, 60.51359)) |>
-  as.matrix()
+                    mzmax = c(60.04623, 60.51359))
 
 #' Extract their EICs and plot them
 chromatogram(data[c(1,4)], mz = mz_rt[, c(3, 4)],
@@ -1609,10 +1608,8 @@ Task: sensitivity analysis: with/without normalization. with/without
 pre-filtering.
 
 
-# Annotation 
+# Annotation
 
-did the msms to 
-###MSMS dataset 
 - Different levels of annotation.
 - Just m/z (mass).
 - m/z and retention time.
