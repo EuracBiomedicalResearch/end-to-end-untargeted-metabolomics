@@ -3,7 +3,7 @@ title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry* a
 author:
   - name: "Philippine Louail"
 affiliation: "Eurac Research, Bolzano, Italy"
-output: pdf_document
+output: html_document
 date: "2023-09-07"
 ---
 
@@ -155,10 +155,11 @@ abbreviations essential for proper interpretation of the phenodata table:
 - CTR: Control
 
 ```{r define-colors, include=FALSE}
-#' Define colors for the groups.
-col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
-names(col_phenotype) <- c("CTR", "CVD", "QC")
-
+#' Define colors for the different phenotypes
+col_phenotype <- brewer.pal(8, name = "Dark2")[c(8, 4, 3)]
+names(col_phenotype) <- c("QC",
+                          "CVD",
+                          "CTR")
 col_sample <- col_phenotype[sampleData(data)$phenotype]
 ```
 
@@ -196,7 +197,6 @@ information is currently not as efficient and seamless as it is for spectral
 information. Work is underway to develop a `Chromatogram` object that is as
 comprehensive and user-friendly as the existing `Spectra` object.
 
-
 # Data visualization and general quality assessment
 
 Effective visualization is paramount for inspecting and assessing the quality of
@@ -227,13 +227,12 @@ spectra data avoids this problem.
 ```{r bps, echo=TRUE, fig.width = 12, fig.height = 8, fig.cap = "Base peak spectra for the 10 samples of the experiment."}
 #' binning and combining all spectra per file into a single spectrum
 bps <- spectra(data) |>
-    bin(binSize = 0.01) |>
+    bin(binSize = 0.01, zero.rm = TRUE) |>
     combineSpectra(f = fromFile(data), intensityFun = max, ppm = 5)
 
 #' Plot the base peak spectra
 par(mar = c(2, 1, 1, 1))
 plotSpectra(bps)
-
 ```
 
 The Base Peak Spectra (BPS) reveal the most prevalent ions present in each of
@@ -324,7 +323,7 @@ bpc <- chromatogram(data, aggregationFun = "max")
 ```
 
 ```{r Plot bpc before filtering, echo=FALSE}
-plot(bpc, col = paste0(col_phenotype[bpc$phenotype], 80), main = "BPC")
+plot(bpc, col = paste0(col_sample, 80), main = "BPC")
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -339,7 +338,7 @@ bpc <- chromatogram(data, aggregationFun = "max")
 ```
 
 ```{r plot after filtering, echo=FALSE}
-plot(bpc, col = paste0(col_phenotype[bpc$phenotype], 80), main = "BPC after filtering")
+plot(bpc, col = paste0(col_sample, 80), main = "BPC after filtering")
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -370,80 +369,106 @@ ticmap <- do.call(cbind, lapply(tic, intensity)) |>
 
 ... discuss this...
 
+### Internal standard
+
 Throughout the entire process, it is crucial to have reference points within the
-dataset, such as well-known ions. In this workflow, we selected ions that are
-commonly present in human blood serum. Below, we generate Extracted Ion
-Chromatograms (EIC) for these "test ions."
-
-```{r EIC}
-#'Calculating ion mass for:
-
-#' Cystine
-cystine_mz <- calculateMass("C6H12N2O4S2") |>
-  mass2mz("[M+H]+")
-
-cystine_mz <- cystine_mz[1, 1]
-
-eic_cystine <- chromatogram(data, rt = c(195, 218),
-                           mz = cystine_mz + c(-0.05, 0.05),
-                           aggregationFun = "max")
-
-#' 1- Methylhistidine
-Met_mz <- calculateMass("C7H11N3O2") |>
-  mass2mz("[M+H]+")
-
-Met_mz <- Met_mz[1, 1]
-
-eic_Met <- chromatogram(data, rt = c(170, 200),
-                           mz = Met_mz + c(-0.05, 0.05), aggregationFun = "max")
-```
-
-Now we can `plot()` these EICs:
-
-```{r plot EIC, echo=FALSE}
-
-#' plot both EIC
-par(mfrow = c(1, 2))
-plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80))
-grid()
-
-plot(eic_Met, main = "1- Methylhistidine", col = paste0(col_sample, 80))
-grid()
-legend("topright", col = col_phenotype,
-       legend = names(col_phenotype), lty = 1)
-```
-
-... describe EICs - for cytine there is a clear concentration difference between
-QCs and study samples.
-
-## Internal standard chromatographich data (don't keep that for final version)
+dataset, such as well-known ions. Most experiment nowadays include internal
+standards (IS), it was the case here, we advise to use them for visualization
+throughout the entire analysis process. For this experiment, we had a list of 15
+IS, we looked at all of them and decided on two to follow our analysis process.
+Below, we generate Extracted Ion Chromatograms (EIC) for these "test ions".
+(here also precise that people can use commonly present ions in serum.)
 
 ```{r EIC extract for internal standard, eval=FALSE, include=FALSE}
 #' get the list
 intern_standard <- read.delim("internal_standards.txt")
 intern_standard <- intern_standard[!is.na(intern_standard$POS), ]
+rownames(intern_standard) <- intern_standard$abbreviation
 
-#'generate calcualte formula
+#' Calculate m/z based on  mass
 intern_standard$mz <- mapply(intern_standard$formula,
                              intern_standard$POS, FUN = mass2mz)
 
-
-##' Extract the EICs no RT
+##' Extract the EICs
 #' Expand the m/z range by 0.01 on both sides
 intern_standard$mzmin <- intern_standard$mz - 0.01
 intern_standard$mzmax <- intern_standard$mz + 0.01
+intern_standard[, "rtmin"] <- intern_standard$RT - 10
+intern_standard[, "rtmax"] <- intern_standard$RT + 10
+```
 
-#' Full EIC
-eics <- chromatogram(data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
+After extracting and looking at each of the IS present in our data, we decided
+to visualize cystine and Methionine
 
-dr <- "png/internal_standard/chromatogram/"
-dir.create(dr, recursive = TRUE, showWarnings = FALSE)
+```{r}
+#' Extract cystine and Methionine m/z for future use.
+cystine_mz <- intern_standard["cystine_13C_15N", "mz"]
+
+#' Extract EIC
+eic_cystine <- chromatogram(data, rt = c(195, 218),
+                           mz = cystine_mz + c(-0.05, 0.05),
+                           aggregationFun = "max")
+
+#' Methionine
+met_mz <- intern_standard["methionine_13C_15N", "mz"]
+
+eic_met <- chromatogram(data, rt = c(151, 171), 
+                        mz = met_mz + c(-0.05, 0.05),
+                           aggregationFun = "max")
+```
+
+Now we can `plot()` these EICs:
+
+```{r plot EIC, echo=FALSE}
+#' plot both EIC
+par(mfrow = c(1, 2))
+plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
+
+plot(eic_met, main = "Methionine", col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
+legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
+```
+
+... describe EICs 
+- Cystine there is a clear concentration difference between
+QCs and study samples.
+- Methionine: nice signal, bit of noise and rt shift between samples.
+
+
+It's also important to remember that these are not the endogenous compounds, 
+below we compare the endogenous and artificially added cystine ions. 
+
+```{r}
+#' extract endogenous D4-cystine mass and EIC and plot.
+cysmass <- calculateMass("C6H12N2O4S2") #' not super sure about that
+cys_endo <- mass2mz(cysmass)[,1]
+
+#' Plot versus spiked 
+par(mfrow = c(1, 2))
+chromatogram(data, mz = cys_endo + c(-0.01, 0.01), rt = c(200, 220),
+             aggregationFun = "max") |>
+    plot(main = "Endogenous Cystine", col = paste0(col_sample, 80))
+    grid()
+
+plot(eic_cystine, main = "Spiked Cystine", col = paste0(col_sample, 80))
+grid()
+legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
+```
+
+... 
+
+```{r eval=FALSE, include=FALSE}
+#' Extract and plot EIC of selected internal standard. Remove at some point
+eics <- chromatogram(
+    data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
+    rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
 for (i in seq_len(nrow(intern_standard))) {
-    png(paste0("png/internal_standard/chromatogram/chromatogram_",
-               intern_standard$abbreviation[i], ".png"),
-        width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main = intern_standard$name[i],
-         col = paste0(col_sample, 80))
+    png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
+        width = 12, height = 8, units = "cm", pointsize = 4, res = 600)
+    plot(eics[i], main = intern_standard$name[i], col = paste0(col_sample, 80))
     grid()
     legend("topright", col = col_phenotype,
            legend = names(col_phenotype), lty = 1)
@@ -460,7 +485,7 @@ for (i in seq_len(nrow(intern_standard))) {
 #' - Glucose: nice signal.
 #' - Glutamic acid: very nice signal.
 #' - Glycine: signal low but ~ OK.
-#' - Histidine: very nice signal, RT a bit off.
+#' - cystine: very nice signal, RT a bit off.
 #' - Isoleucine: multiple peaks, most likely both leucine and isoleucine.
 #' - Leucine: same as Isoleucine.
 #' - Methionine: nice signal, but some other peaks close by.
@@ -470,24 +495,6 @@ for (i in seq_len(nrow(intern_standard))) {
 #' - Threonine: nice signal.
 #' - Tyrosine: signal low but ~ OK.
 #' - Valine: signal OK. Other peaks close by.
-
-##'  extract EIC with RT
-
-intern_standard[, "rtmin"] <- intern_standard$RT - 10
-intern_standard[, "rtmax"] <- intern_standard$RT + 10
-eics <- chromatogram(
-    data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
-    rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
-for (i in seq_len(nrow(intern_standard))) {
-    png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
-        width = 12, height = 8, units = "cm", pointsize = 4, res = 600)
-    plot(eics[i], main = intern_standard$name[i], col = paste0(col_sample, 80))
-    grid()
-    legend("topright", col = col_phenotype,
-           legend = names(col_phenotype), lty = 1)
-    abline(v = intern_standard$RT[i], col = "red", lty = 3)
-    dev.off()
-}
 ```
 
 # Data pre-processing
@@ -527,9 +534,9 @@ param <- CentWaveParam()
 cystine_test <- findChromPeaks(eic_cystine, param = param)
 chromPeaks(cystine_test)
 
-#' Evaluate for 1- Methylhistidine
-Met_test <- findChromPeaks(eic_Met, param = param)
-chromPeaks(Met_test)
+#' Evaluate for Methionine
+met_test <- findChromPeaks(eic_met, param = param)
+chromPeaks(met_test)
 ```
 
 We will go through the main ones that be easily be adapted to the user dataset.
@@ -570,7 +577,7 @@ and the absolute value between them is calculated and expressed in ppm.
 cst <- data[1L] |>
   spectra() |>
   filterRt(rt = c(208, 218)) |>
-  filterMzRange(mz = cystine_mz + c(-0.01, 0.01))
+  filterMzRange(mz = cystine_mz + c(-0.005, 0.005))
 
 lengths(cst)
 
@@ -596,13 +603,14 @@ step should be to increase this range.
 ```{r}
 #' With more accurate parameters; snthresh reduced because peak detection
 #' on an EIC does not have enough data to properly estimate "noise"
-param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2, snthresh = 5)
+param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2, 
+                       snthresh = 5)
 
 cystine_test <- findChromPeaks(eic_cystine, param = param)
 head(chromPeaks(cystine_test))
 
-Met_test <- findChromPeaks(eic_Met, param = param)
-head(chromPeaks(Met_test))
+met_test <- findChromPeaks(eic_met, param = param)
+head(chromPeaks(met_test))
 ```
 
 ```{r echo=FALSE}
@@ -612,8 +620,8 @@ plot(cystine_test, main = "Cystine", col = paste0(col_sample, 80),
      peakBg = paste0(col_sample, 40)[chromPeaks(cystine_test)[, "column"]])
 grid()
 
-plot(Met_test, main = "1- Methylhistidine", col = paste0(col_sample, 80),
-     peakBg = paste0(col_sample, 40)[chromPeaks(Met_test)[, "column"]])
+plot(met_test, main = "Methionine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample, 40)[chromPeaks(his_test)[, "column"]])
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
@@ -629,12 +637,12 @@ param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
 
 data <- findChromPeaks(data, param = param, chunkSize = 5)
 
-#' Test if we find cystine and 1- Methylhistidine again
+#' Test if we find cystine and Methionine again
 eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.01, 0.01),
                             rt = c(205, 215))
 
-eic_Met <- chromatogram(data, mz = Met_mz + c(-0.01, 0.01),
-                        rt = c(180, 195))
+eic_met <- chromatogram(data, mz = met_mz + c(-0.01, 0.01),
+                        rt = c(155, 165))
 ```
 
 ```{r plot new eics, echo=FALSE}
@@ -644,16 +652,12 @@ plot(eic_cystine, main = "EIC Cystine", col = paste0(col_sample, 80),
      peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 40))
 grid()
 
-plot(eic_Met, main = "EIC 1- Methylhistidine", col = paste0(col_sample, 80),
-     peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 40))
+plot(eic_met, main = "EIC Methionine", col = paste0(col_sample, 80),
+     peakBg = paste0(col_sample[chromPeaks(eic_met)[, "sample"]], 40))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 ```
-
-###newly developped post processing thing here
-
-...
 
 ### Refine chromatographic peaks
 
@@ -734,8 +738,6 @@ plot(bpc_raw, col = paste0(col_phenotype[bpc$phenotype], 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
-
-#change color of non QC so they are less visible, or just leave QC I think it would be more readable
 ```
 
 Here, we can observe slight drifts in the signals of the QC samples, which were
@@ -788,7 +790,7 @@ corrected.
 
 ```{r}
 # Grouping the peaks
-param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype == "QC",
                           minFraction = 0.9,
                           binSize = 0.01,
                           bw = 2)
@@ -818,9 +820,10 @@ which they were measured during the measurement run).
 
 ```{r}
 #' Define parameters of choice
+subset <- which(sampleData(data)$phenotype == "QC")
 param <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.5,
                          subsetAdjust = "average",
-                         subset = QC_samples)
+                         subset = subset)
 
 #' Input in the function
 data <- adjustRtime(data, param = param)
@@ -866,50 +869,53 @@ grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 ```
+
 ...
 
 Can also observe it in our ions of interest:
 
 ```{r specific ion before and after, echo=FALSE}
 #' Similar comparison but this time filtering to see cystine
-par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
+par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
 
 old_eic_cystine <- chromatogram(data_raw,
                                 mz = cystine_mz + c(-0.05, 0.05),
                                 rt = c(205, 214))
 plot(old_eic_cystine, main = "Cystine before alignment",  peakType = "none",
      col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
 
 eic_cystine <- chromatogram(data,  mz = cystine_mz + c(-0.05, 0.05),
                             rt = c(205, 214))
 plot(eic_cystine, "Cystine after alignment", peakType = "none",
      col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
 ```
 
 Little difference
 
 ```{r echo=FALSE}
 #' Same for Met
-par(mfrow = c(1, 2), mar = c(4, 4.5, 1, 0.5))
-old_eic_Met <- chromatogram(data_raw, mz = Met_mz + c(-0.05, 0.05),
-                            rt = c(175, 195))
-plot(old_eic_Met, main = "1- Methylhistidine before alignment",
+par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
+old_eic_met <- chromatogram(data_raw, mz = met_mz + c(-0.05, 0.05),
+                            rt =  c(155, 165))
+plot(old_eic_met, main = "Methionine before alignment",
      peakType = "none", col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 
-eic_Met <- chromatogram(data,  mz = Met_mz + c(-0.05, 0.05),
-                        rt = c(175, 195))
-plot(eic_Met, main = "1- Methylhistidine after alignment",
+
+eic_met <- chromatogram(data,  mz = met_mz + c(-0.05, 0.05),
+                        rt =  c(155, 165))
+plot(eic_met, main = "Methionine after alignment",
      peakType = "none", col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 ```
-Our test ions did not display any significant differences between the raw and
-adjusted data.
 
-Use another ion as example... seems that around a rt of 150 there was stronger
-adjustment? potential compounds to check, maybe the internal standards for:
-- leucine
-- methionine
-- phenylalanine
-
+...better...
 
 ## Correspondence
 
@@ -919,7 +925,6 @@ to identify chromatographic peaks that originate from the same types of ions,
 which are then grouped and referred to as LC-MS features.
 (A visual representation similar to Johannes's drawing would be informative to
 illustrate what features are—consider creating one using BioRender.)
-
 
 The function `groupChromPeaks` can take two groups of parameters:
 
@@ -948,19 +953,19 @@ plotChromPeakDensity(
     peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
     peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
     peakPch = 16)
-plotChromPeakDensity(eic_Met, param = param,
+plotChromPeakDensity(eic_met, param = param,
     col = paste0(col_sample, "80"),
-    peakCol = col_sample[chromPeaks(eic_Met)[, "sample"]],
-    peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 20),
+    peakCol = col_sample[chromPeaks(eic_met)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_met)[, "sample"]], 20),
     peakPch = 16)
 ```
 
 For this method, it's crucial to understand that grouping depends on the
-smoothness of the density curve and can be configured with the parameter `bw`. As
-seen above, the smoothness is too high to properly group our features. When
+smoothness of the density curve and can be configured with the parameter `bw`. 
+As seen above, the smoothness is too high to properly group our features. When
 looking at the default parameters, we can observe that indeed, the `bw`
 parameter is set to `bw = 30`. To accommodate the multiple peaks present in our
-1-Methylhistidine Extracted Ion Chromatogram (EIC), we need to reduce this
+1-MethylMethionine Extracted Ion Chromatogram (EIC), we need to reduce this
 parameter. Let's see what happens when it is lowered to `bw = 2`.
 
 Note:
@@ -976,13 +981,12 @@ plotChromPeakDensity(
     peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
     peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
     peakPch = 16)
-plotChromPeakDensity(eic_Met, param = param,
+plotChromPeakDensity(eic_met, param = param,
     col = paste0(col_sample, "80"),
-    peakCol = col_sample[chromPeaks(eic_Met)[, "sample"]],
-    peakBg = paste0(col_sample[chromPeaks(eic_Met)[, "sample"]], 20),
+    peakCol = col_sample[chromPeaks(eic_met)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_met)[, "sample"]], 20),
     peakPch = 16)
 ```
-
 
 Now...
 
@@ -992,12 +996,12 @@ data <- groupChromPeaks(data, param = param)
 ```
 
 Test appropriate grouping by examining an area with ions that are isomers:
-1-Methylhistidine and 3-Methylhistidine.
+1-MethylMethionine and 3-MethylMethionine.
 
 ```{r}
-#' Extract chromatogram with signal for isomers 1-Methylhistidine and
-#' 3-Methylhistidine
-chr_test <- chromatogram(data, mz = Met_mz + c(-0.01, 0.01),
+#' Extract chromatogram with signal for isomers 1-MethylMethionine and
+#' 3-MethylMethionine
+chr_test <- chromatogram(data, mz = met_mz + c(-0.01, 0.01),
                          rt = c(0, 200),aggregationFun = "max")
 plotChromPeakDensity(
     chr_test, simulate = FALSE,
@@ -1010,6 +1014,7 @@ plotChromPeakDensity(
 Looks good
 
 resulting object:
+
 ```{r}
 #' Definition of the features
 featureDefinitions(data) |>
@@ -1024,9 +1029,7 @@ featureValues(data, method = "sum") |>
 
 F00005 and F00006 contain missing values in some samples
 
-
 ## Gap filling
-
 
 The previously observed missing values (*NA*) could be attributed to various
 reasons. Even if they represent a genuinely missing value, indicating that a
@@ -1067,6 +1070,7 @@ chromatogram(data[c(1,4)], mz = mz_rt[, c(3, 4)],
 
 
 ```
+
 .. Discuss example
 
 Will will therefore use the function `fillChromPeaks`  and `ChromPeakAreaParam`
@@ -1088,6 +1092,7 @@ chromatogram(data[c(1,4)], mz = mz_rt[, c(3, 4)],
                      rt = mz_rt[, c(1, 2)]) |>
   plot(col = c("red", "blue"), lwd = 2)
 ```
+
 ...I feel like the one on the right could be rescued maybe ?...
 
 To assess the effectiveness of the gap-filling method for rescuing signals, we
@@ -1222,13 +1227,373 @@ Sample preparation biases can be evaluated using internal standard. QC samples
 are independent from of the sample preparation steps, therefore can be used to
 estimate and correct LC-MS specific biases.
 
-## Prep norm
+## Packages
+
+```{r packages used}
+library(CompMetaboTools)
+library(MetaboAnnotation)
+```
+
+## Initial quality assessment
+
+First need to load the results and the preprocessed dataset. We also create a
+new `assay` within the result object and impute the `NA` values.
+In this analysis, all metabolites are considered. We assume that most missing
+values (i.e. those not removed because of technical problems) are representing
+signal which is below detection limit. In such cases,
+missing values are replaced with random numbers from the uniform distribution
+from the half of smallest measured value to the smallest measured value for that
+analyte.  The uniform distribution is defined with two parameters (minimum and
+maximum) and all values between them have an equal probability of being
+selected.
 
 ```{r}
 #' Load preprocessing results
 load("SumExp.RData")
 load("data.RData")
+
+#' Impute missing values using uniform distribution
+na.unidis <- function(z) {
+    na <- is.na(z)
+    if (any(na)) {
+        min = min(z, na.rm = TRUE)
+        z[na] <- runif(sum(na), min = min/2, max = min)
+    }
+    z
+}
+
+#' Create an assay with the filled and imputed value. 
+tmp <- apply(assay(res, "raw_filled"), MARGIN = 1, na.unidis)
+assays(res)$raw_filled_imputed <- t(tmp)
 ```
+
+### PCA unsupervised
+
+Look for overall biases in batch, sample, injection index,...
+- scale (center and scale) on columns (features after the t() call) to
+remove dependency on absolute abundances.
+
+```{r unsupervised checks, include=TRUE, fig.width = 10, fig.height = 5}
+vals <- assay(res, "raw_filled_imputed") |>
+    log2() |>
+    t() |>
+    scale(center = TRUE, scale = TRUE)
+
+pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
+
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
+plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
+         col = col_sample, bg = paste0(col_sample, 80),
+         labels = res$injection_index)
+legend("topleft", inset = c(0, -0.24), col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.7, title = "Phenotype", title.cex = 0.8)
+plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
+         col = col_sample, bg = paste0(col_sample, 80),
+         labels = res$injection_index)
+```
+
+Describe PCA
+- clear separation of study (plasma) from QC Pool (serum) on PC1.
+- separation based on phenotype on PC3.
+- no relationship of PC1 to PC4 on injection index.
+
+Precise that in some case instead of imputed it can be interesting to remove the
+NA values and evaluate the PCA again. 
+
+### Intensity evaluation
+
+Counts of non missing values and feature abundance distribution
+
+```{r counts, fig.height=7, fig.width=5, include=TRUE}
+layout(mat = matrix(1:3, ncol = 1), height = c(0.2, 0.2, 0.8))
+
+par(mar = c(0.2, 4.5, 0.2, 3))
+barplot(apply(assay(res, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
+        col = col_sample, ylab = "features raw data", xaxt = "n", space = 0.012)
+barplot(apply(assay(res, "raw_filled"), MARGIN = 2, function(x) sum(!is.na(x))),
+        col = col_sample, ylab = "features filled data", xaxt = "n", space = 0.012)
+boxplot(log2(assay(res, "raw_filled")), xaxt = "n", ylab = "log2 abundance filled data",
+        col = col_sample, outline=FALSE, medlty = "blank", border = col_sample,
+        boxwex = 0.99 )
+points(colMeans(log2(assay(res, "raw_filled")), na.rm = TRUE), type = "l")
+grid(nx = NA, ny = NULL)
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.8,  bty = "n")
+```
+
+The plot above show that the gap filling steps allowed to rescue quite a number
+of NAs and allowed us to have a more equivalent number of features per sample.
+As we assume that every sample should have a similar amount of features detected. 
+
+We can also observe that the samples are not showing very important variation
+in their mean and median. 
+
+Another way to evaluate the distribution of value within our data are relative log
+abundance plots (RLA). Within group RLA assess the tightness of replicate within
+groups and should have a median close to zero and low variation around it.
+When used across groups, they allow to compare behavior between groups. Below we
+will perform the former to show relative abundance of each sample to the other
+sample of the same group by setting `group = res$phenotype`.
+
+```{r rla-plot raw and filled, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
+par(mfrow = c(1, 1), mar = c(0.2, 4.5, 2.5, 3))
+boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
+        cex = 0.5, pch = 16,
+        col = col_sample, ylab = "RLA",
+        border = paste0(col_sample, 40), notch = TRUE, boxwex = 1,
+        outline = FALSE, xaxt = "n", main = "Filled in data", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.8,  bty = "n")
+```
+
+On the RLA plot above, we can observe that the medians for most samples are
+indeed centered around 0. Exception is one of the *CVD* samples. But
+normalization (hopefully) helps there.
+
+### Internal standard
+
+We want to select the internal standard compounds for which we have features
+defined. For this, we first reuse the internal standards data from before. 
+Using the `matchValues` function from the `MataboAnnotation` packages, we will
+identify features matching m/z and RT of internal standards. With `mzColname`
+and `rtColname` we specify the column names in query (our IS) and target
+(features detected in the data set) that contain the m/z or RT values.
+
+We then filter these *matches* to only keep IS that match with ONLY one feature
+and remove the others.
+
+```{r include=TRUE}
+#' Creating a column within our IS table
+intern_standard$feature_id <- NA_character_
+
+#' Identify features matching m/z and RT of internal standards.
+fdef <- featureDefinitions(data)
+fdef$feature_id <- rownames(fdef)
+match_intern_standard <- matchValues(
+    query = intern_standard,
+    target = fdef,
+    mzColname = c("mz", "mzmed"),
+    rtColname = c("RT", "rtmed"),
+    param = MzRtParam(ppm = 50, toleranceRt = 10))
+
+#' Keep only matches with a 1:1 mapping standard to feature.
+rem_dups <- function(x) {
+    if (nrow(matches(x)) > 1)
+        filterMatches(x, index = integer())
+    else x
+}
+
+match_intern_standard <- MetaboAnnotation::endoapply(match_intern_standard,
+                                                     FUN = rem_dups)
+intern_standard$feature_id <- match_intern_standard$target_feature_id
+intern_standard <- intern_standard[!is.na(intern_standard$feature_id), ]
+
+## Let's look at our internal standards
+is_features <- featureChromatograms(
+    data, features = intern_standard[c("methionine_13C_15N", "cystine_13C_15N"),
+                                     "feature_id"], expandRt = 5)
+
+par(mfrow = c(1, 2))
+    plot(is_features[1], col = col_sample,
+         peakBg = paste0(col_sample[chromPeaks(is_features)[, "sample"]], 40),
+         main = "methionine_13C_15N")
+    abline(v = intern_standard["methionine_13C_15N", "RT"], lty = 2)
+    plot(is_features[2], col = col_sample,
+         peakBg = paste0(col_sample[chromPeaks(is_features)[, "sample"]], 40),
+         main = "cystine_13C_15N")
+    abline(v = intern_standard["cystine_13C_15N", "RT"], lty = 2)
+```
+
+As anticipated, our two internal standards have effectively identified features.
+Additionally, internal standards play a crucial role in guiding the
+normalization process. Given the assumption that the samples were
+artificially spiked, we possess a known ground truth—that the abundance or
+intensity of the internal standard should be consistent. Consequently,
+normalization aims to minimize variation between samples for the internal
+standard, reinforcing the reliability of our analyses. 
+
+## Between sample normalisation
+
+We will implement between-sample normalization using filled-in features. This
+process effectively mitigates variations influenced by technical issues, such
+as differences in sample preparation and injection methods.  In this instance,
+we will employ a commonly used technique known as median scaling.
+
+### Median scaling
+
+Compute the median for each sample, followed by determining the median of these
+individual sample medians. This ensures consistent median values for each sample
+throughout the entire data set. Maintaining uniformity in the average total
+metabolite abundance across all samples is crucial for effective implementation.
+
+This process aims to establish a shared baseline for the central tendency of
+metabolite abundance, mitigating the impact of sample-specific technical
+variations. This approach fosters a more robust and comparable analysis of the
+top features across the data set. The assumption is that normalizing based on
+the median, known for its lower sensitivity to extreme values, enhances the
+comparability of top features and ensures a consistent average abundance across
+samples.
+
+```{r}
+#' Compute median and generate normalization factor
+mdns <- apply(assay(res, "raw_filled"), MARGIN = 2,
+              median, na.rm = TRUE )
+nf_mdn <- mdns / median(mdns)
+
+#' divide dataset by median of median and create a new assay.
+assays(res)$norm <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn,
+                                   '/')
+
+#' Also create an assay normalised with no filled or imputed data
+tmp <- assay(res, "norm")
+tmp[is.na(assay(res, "raw"))] <- NA
+assays(res)$norm_nofill <- tmp
+rm(tmp)
+```
+
+## Assessing overall effectiveness of the normalization approach
+### PCA
+
+```{r fig.width=7, include=TRUE}
+#' Full data before
+vals <- assay(res, "raw_filled_imputed") |>
+    t() |>
+    log2() |>
+    scale(center = TRUE, scale = TRUE)
+pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
+pca_int <- prcomp(vals[, intern_standard$feature_id],
+                  scale = FALSE, center = FALSE)
+
+#' Full data after
+vals <- apply(assay(res, "norm"), MARGIN = 1, na.unidis) |>
+    log2() |>
+    scale(center = TRUE, scale = TRUE)
+pca_res_norm <- prcomp(vals, scale = FALSE, center = FALSE)
+pca_int_norm <- prcomp(vals[, intern_standard$feature_id],
+                       scale = FALSE, center = FALSE)
+
+par(mfrow = c(1, 2), mar = c(4, 4, 1, 1))
+plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
+         col = col_sample, bg = paste0(col_sample, 80))
+legend("topleft", col = col_phenotype, legend = names(col_phenotype), lty=1, lwd = 2,
+       xpd = TRUE, ncol = 3, cex = 0.7, title = "Phenotype", title.cex = 0.8,
+       bty = "n")
+title(main = "Full data set PCA before norm", cex = 0.5)
+plot_pca(pca_res_norm, pc_x = 1, pc_y = 2, pch = 21,
+         col = col_sample, bg = paste0(col_sample, 80))
+title(main = "Full data set PCA after norm", cex = 0.5)
+```
+
+### RLA
+
+```{r rla-plot after norm, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
+par(mfrow = c(2, 1), mar = c(1, 4, 3, 1))
+
+boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
+        cex = 0.5, pch = 16, col = col_sample, ylab = "RLA",
+        border = paste0(col_sample, 40), notch = TRUE, cex.main = 1,
+        outline = FALSE, xaxt = "n", main = "Raw data", boxwex = 1)
+grid(nx = NA, ny = NULL)
+legend("topleft", inset = c(0, -0.2), col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE,
+       ncol = 3, cex = 0.7, bty = "n")
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+boxplot(rowRla(assay(res, "norm"), group = res$phenotype),
+        cex = 0.5, pch = 16,
+        col = col_sample, ylab = "RLA",
+        border = paste0(col_sample, 40), notch = TRUE, boxwex = 1,
+        outline = FALSE, xaxt = "n", main = "After normalization", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+```
+
+...Looks much better... 
+
+### Internal standards
+
+Below we can see the coefficient of variation as well as the mean and standard
+deviation of our IS between the different samples. they are compared between
+before and after normalization of our datasets. 
+
+```{r internal-standard-table, include=TRUE, results = "asis"}
+#' table of internal standards with mean and sd of abundances (in log2 scale)
+tmp_fv <- assay(res, "raw_filled")[intern_standard$feature_id, ]
+tmp_fv_norm <- assay(res, "norm")[intern_standard$feature_id, ]
+intern_standard$mean_abd <- rowMeans(log2(tmp_fv), na.rm = TRUE)
+intern_standard$mean_abd_norm <- rowMeans(log2(tmp_fv_norm), na.rm = TRUE)
+intern_standard$sd_abd <- rowSds(log2(tmp_fv), na.rm = TRUE)
+intern_standard$sd_abd_norm <- rowSds(log2(tmp_fv_norm), na.rm = TRUE)
+intern_standard$CV_raw <- rowRsd(tmp_fv, na.rm = TRUE)
+intern_standard$CV_norm <- rowRsd(tmp_fv_norm, na.rm = TRUE)
+
+cpt <- paste("Internal standards with detected and assigned features, mean and",
+             "standard deviation of (log2) abundance and Coefficient of",
+             "variation before and after normalization.")
+pandoc.table(intern_standard[, 
+             c("mean_abd", "mean_abd_norm", "sd_abd", "sd_abd_norm", "CV_raw",
+               "CV_norm")],
+             style = "rmarkdown", caption = cpt)
+```
+
+...describe results... (they all increase..but could also say they stay 
+relatively the same)
+
+### Sample groups
+
+```{r include=TRUE, results = "asis"}
+index_study <- res$phenotype %in% c("CTR", "CVD")
+index_QC <- res$phenotype == "QC"
+
+sample_res <- cbind(
+            QC_Raw = rowRsd(assay(res, "raw_filled")[, index_QC], na.rm = TRUE),
+            QC_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE),
+            Study_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
+                                      na.rm = TRUE),
+            Study_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
+)
+
+#' Quantile
+res_df <- data.frame(
+    QC_raw = quantile(sample_res[, "QC_Raw"], na.rm = TRUE),
+    QC_Norm = quantile(sample_res[, "QC_norm"], na.rm = TRUE),
+    Study_raw = quantile(sample_res[, "Study_Raw"], na.rm = TRUE),
+    Study_Norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE)
+    )
+cpt <- paste0("Distribution of CV values across samples for the raw and ",
+              "normalized data.")
+pandoc.table(res_df, style = "rmarkdown", caption = cpt)
+```
+
+Plotting nstead ? 
+...describe results...
+
+```{r}
+#' Number of coefficient variation <0.3 for both QC and study samples
+Summary <- matrix(ncol= ncol(sample_res), nrow = 2, 
+                  dimnames = list(c("CV <0.3", "Mean of CV")))
+colnames(Summary) <- colnames(sample_res)
+for (i in seq_len(ncol(sample_res))){
+    Summary["CV <0.3",i] <- sum(sample_res[, i] < 0.3, na.rm = TRUE)
+    Summary["Mean of CV",i] <- mean(sample_res[, i], na.rm = TRUE)
+}
+
+cpt <- paste0("Amount of coefficient of variation below 0.3 for QC and study ",
+              "samples, before and after normalization.")
+pandoc.table(Summary, style = "rmarkdown", caption = cpt)
+```
+
+Not sure which table to keep. 
+
+### Conclusion 
+
+No much difference but still the RLA plot showed that it allowed to centered the data around the median...
+for bigger and more complex datatset... 
 
 
 ## Averaging replicates
@@ -1244,8 +1609,10 @@ Task: sensitivity analysis: with/without normalization. with/without
 pre-filtering.
 
 
-# Annotation
+# Annotation 
 
+did the msms to 
+###MSMS dataset 
 - Different levels of annotation.
 - Just m/z (mass).
 - m/z and retention time.

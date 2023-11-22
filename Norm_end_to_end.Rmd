@@ -35,9 +35,9 @@ library(ggfortify)
 
 First need to load the results and the preprocessed dataset. We also create a
 new `assay` within the result object and impute the `NA` values.
-In this analysis, all metabolites are considered. We
-assume that most missing values (i.e. those not removed because of technical
-problems) are representing signal which is below detection limit. In such cases,
+In this analysis, all metabolites are considered. We assume that most missing
+values (i.e. those not removed because of technical problems) are representing
+signal which is below detection limit. In such cases,
 missing values are replaced with random numbers from the uniform distribution
 from the half of smallest measured value to the smallest measured value for that
 analyte.  The uniform distribution is defined with two parameters (minimum and
@@ -104,51 +104,46 @@ plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
 ## - separation based on phenotype on PC3.
 ## - no relationship of PC1 to PC4 on injection index.
 
-## PCA without any imputed values to check PCA is not driven by imputation.
-vals <- naomit |>
-    log2() |>
-    t() |>
-    scale(center = TRUE, scale = TRUE)
-
-pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
-
-par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
-plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index)
-legend("topleft", inset = c(0, -0.24), col = col_phenotype,
-       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
-       cex = 0.7, title = "Phenotype", title.cex = 0.8)
-plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index)
-
-## Results are similar, thus, imputation did not affect PCA; we can drop
-## that PCA.
-
+## Also checked that Imputed value did not affect the PCA: it did not.
 ```
 
 ### Intensity evaluation
 
 Counts of non missing values and feature abundance distribution
 
-```{r counts, include=TRUE}
+```{r counts, fig.height=7, fig.width=5, include=TRUE}
 layout(mat = matrix(1:3, ncol = 1), height = c(0.2, 0.2, 0.8))
 
 par(mar = c(0.2, 4.5, 0.2, 3))
 barplot(apply(assay(res, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
-        col = col_sample, ylab = "features", xaxt = "n", space = 0.012)
+        col = col_sample, ylab = "features raw data", xaxt = "n", space = 0.012)
 barplot(apply(assay(res, "raw_filled"), MARGIN = 2, function(x) sum(!is.na(x))),
-        col = col_sample, ylab = "features", xaxt = "n", space = 0.012)
-boxplot(log2(assay(res, "raw_filled")), xaxt = "n", ylab = "log2 abundance",
+        col = col_sample, ylab = "features filled data", xaxt = "n", space = 0.012)
+boxplot(log2(assay(res, "raw_filled")), xaxt = "n", ylab = "log2 abundance filled data",
         col = col_sample, outline=FALSE, medlty = "blank", border = col_sample,
         boxwex = 0.99 )
 points(colMeans(log2(assay(res, "raw_filled")), na.rm = TRUE), type = "l")
 grid(nx = NA, ny = NULL)
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.8,  bty = "n")
 ```
 
+The plot above show that the gap filling steps allowed to rescue quite a number
+of NAs and allowed us to have a more equivalent number of features per sample.
+As we assume that every sample should have a similar amount of features detected. 
+
+We can also observe that the samples are not showing very important variation
+in their mean and median. 
 
 RLA
+
+One way to evaluation the distribution of value within our data are relative log
+abundance plots (RLA). Within group RLA assess the tightness of replicate within
+groups and should have a median close to zero and low variation around it.
+When used across groups, they allow to compare behavior between groups. Below we
+will perform the former to show relative abundance of each sample to the other
+sample of the same group by setting `group = res$phenotype`.
 
 ```{r rla-plot raw and filled, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
 par(mfrow = c(1, 1), mar = c(0.2, 4.5, 2.5, 3))
@@ -159,31 +154,36 @@ boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
         outline = FALSE, xaxt = "n", main = "Filled in data", cex.main = 1)
 grid(nx = NA, ny = NULL)
 abline(h = 0, lty=3, lwd = 1, col = "black")
-
-## Note: with group = res$phenotype we show relative abundances of each sample
-## against the other samples of the SAME group. This does thus allow to
-## evaluate how different/similar the signal distribution of samples within
-## the same group are. What we see here:
-## Medians for most samples are centered around 0. Exception is one of the
-## red samples. But normalization (hopefully) helps there.
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.8,  bty = "n")
 ```
+
+On the RLA plot above, we can observe that the medians for most samples are
+indeed centered around 0. Exception is one of the *CVD* samples. But
+normalization (hopefully) helps there.
 
 ### Internal standard
 
-We want to select the internal standard for which we have features defined.
+We want to select the internal standard compounds for which we have features
+defined. 
+
+- explain Match code and arguments 
+- 
 
 ```{r include=TRUE}
 #' get the list
 intern_standard <- read.delim("internal_standards.txt")
 intern_standard <- intern_standard[!is.na(intern_standard$POS), ]
 
-#'generate calculate formula
+#' generate calculate formula
 intern_standard$mz <- mapply(intern_standard$formula, intern_standard$POS,
                              FUN = mass2mz)
 
 intern_standard$feature_id <- NA_character_
 
 library(MetaboAnnotation)
+
 #' identify features matching m/z and RT of internal standards. With
 #' mzColname and rtColname we specify the column names in query and target
 #' that contain the m/z or RT values.
@@ -242,6 +242,10 @@ plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
          col = col_sample, bg = paste0(col_sample, 80),
          labels = res$injection_index)
 
+## - Pretty good mix no ? 
+## - PC1 and 2 show again show variance due to QC but definitely not as clear
+## as all features PCA
+
 ```
 
 Describe distribution of IS..
@@ -268,15 +272,15 @@ test different method that are commonly used in metabolomics.
 
 ### Median scaling
 
-compute the median for each sample, followed by determining the median of these
+Compute the median for each sample, followed by determining the median of these
 individual sample medians. This ensures consistent median values for each sample
-throughout the entire dataset. Maintaining uniformity in the average total
+throughout the entire data set. Maintaining uniformity in the average total
 metabolite abundance across all samples is crucial for effective implementation.
 
 This process aims to establish a shared baseline for the central tendency of
 metabolite abundance, mitigating the impact of sample-specific technical
 variations. This approach fosters a more robust and comparable analysis of the
-top features across the dataset. The assumption is that normalizing based on
+top features across the data set. The assumption is that normalizing based on
 the median, known for its lower sensitivity to extreme values, enhances the
 comparability of top features and ensures a consistent average abundance across
 samples.
@@ -331,7 +335,7 @@ clustering methods.
 #' Maybe we should do this only on values for study samples - since the
 #' QC (Pool) is not really representative. Thus, the features we're picking
 #' here and the variance we're removing then is mostly differences between
-#' QC (serum) and study (plasma).
+#' QC (serum) and study (plasma).- i will write that below
 fts_int_std_mean <- colMeans(assay(res, "raw")[intern_standard$feature_id, ],
                              na.rm = TRUE)
 
@@ -365,6 +369,90 @@ fv_ruv3 <- 2^t(ruv_3)
 assays(res)$ruv3 <- fv_ruv3
 ```
 
+RUV only on study samples
+```{r test ruv only study, fig.height= 7, fig.width=5}
+#' if you agree with the code I will swap it with the previous one
+tmp <- assay(res, "raw")[ , res$phenotype != "QC"]
+
+fts_int_std_mean <- colMeans(tmp[intern_standard$feature_id,],
+                             na.rm = TRUE)
+
+cor_int_std <- apply(log2(tmp),
+                     MARGIN = 1, cor, y = log2(fts_int_std_mean))
+
+neg_ctrls <- which(cor_int_std > 0.6)
+neg_ctrls_int <- which(rownames(res) %in% intern_standard$feature_id)
+
+# I think there is no other choice than run on all and then substitute the QC value back to the original ones 
+library(MetNorm)
+
+ruv_rand <- NormalizeRUVRand(t(log2(assay(res, "raw_filled_imputed"))),
+                             ctl = neg_ctrls_int, k = 5,
+                             plotk = FALSE)
+fv_ruvr <- 2^t(ruv_rand$newY)
+assays(res)$ruvr_study <- fv_ruvr
+assay(res, "ruvr_study")[ , res$phenotype == "QC"] <- 
+    assay(res, "raw_filled_imputed")[ , res$phenotype == "QC"] 
+
+library(ruv)
+ruv_3 <- RUVIII(t(log2(assay(res, "raw_filled_imputed"))),
+                ctl = neg_ctrls_int, k = 5,
+                M = design.matrix(res$sample_name))
+fv_ruv3 <- 2^t(ruv_3)
+assays(res)$ruv3_study <- fv_ruv3
+assay(res, "ruv3_study")[ , res$phenotype == "QC"] <- 
+    assay(res, "raw_filled_imputed")[ , res$phenotype == "QC"] 
+```
+
+## evaluation 
+
+```{r}
+library(vioplot)
+par(mfrow = c(6, 1), mar = c(0.2, 4.5, 3, 3))
+
+vioplot(log2(assay(res, "raw_filled")),
+        cex = 0.5, col = col_sample, ylab = expression(log[2]~abundance),
+        border = paste0(col_sample, 40), cex.main = 1,
+        xaxt = "n", main = "Raw data")
+grid(nx = NA, ny = NULL)
+legend("topleft", inset = c(0, -0.2), col = col_phenotype,
+       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
+       cex = 0.7)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+vioplot(log2(assay(res, "ruvr")),
+        cex = 0.5, col = col_sample, ylab = expression(log[2]~abundance),
+        border = paste0(col_sample, 40), xaxt = "n", main = "ruvr", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+vioplot(log2(assay(res, "ruvr_study")),
+        cex = 0.5, col = col_sample, ylab = expression(log[2]~abundance),
+        border = paste0(col_sample, 40), xaxt = "n",
+        main = "ruvr study sample only", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+vioplot(log2(assay(res, "ruv3")),
+        cex = 0.5, col = col_sample, ylab = expression(log[2]~abundance),
+        border = paste0(col_sample, 40), xaxt = "n", main = "ruv III", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+vioplot(log2(assay(res, "ruv3_study")),
+        cex = 0.5, col = col_sample, ylab = expression(log[2]~abundance),
+        border = paste0(col_sample, 40), xaxt = "n",
+        main = "ruvIII study sample only", cex.main = 1)
+grid(nx = NA, ny = NULL)
+abline(h = 0, lty=3, lwd = 1, col = "black")
+
+
+## No changes for ruv3 
+## and of course ruvrandom is super dramatic. I would keep the previous.
+## Or maybe my strategy was not good. 
+```
+
+
 NOMIS
 
 It's essential to note that this method requires a filled-in and imputed dataset
@@ -387,11 +475,6 @@ fv_nms <- fv_nms[rownames(res), ]
 assays(res)$NOMIS <- fv_nms
 ```
 
-About the archived thing - For now using the packages, if
-decide it's good enough, we can maybe rewrite the code (addition to the
-externalTools package that we thought about ? or a specialized MsNorm package)
-or something and reference them ?
-
 ### Evaluate and select *best* norm method
 
 #### Coefficient of variation
@@ -411,16 +494,6 @@ QC <- cbind(
     CV_NOMIS = rowRsd(assay(res, "NOMIS")[, index_QC], na.rm = TRUE)
 )
 
-#' Number <0.3
-QC_summary <- matrix(ncol= ncol(QC), dimnames = list("CV <0.3"))
-for (i in seq_len(ncol(QC))){
-    QC_summary["CV <0.3",i] <- sum(QC[, i] < 0.3, na.rm = TRUE)
-}
-colnames(QC_summary) <- colnames(QC)
-QC_summary
-#' Realized that Anne did the mean RSD, could combine it in this table
-#' actually could make this table combined with the study sample also. for
-#' better comparison
 
 #' Quantile
 QC_df <- data.frame(raw = quantile(QC[, "CV_Raw"], na.rm = TRUE),
@@ -502,7 +575,7 @@ coeff variation of study samples should not go down too much
 index_study <- res$phenotype %in% c("CTR", "CVD")
 
 study_sample <- cbind(
-    CV_Raw = rowRsd(assay(res, "raw")[, index_study], na.rm = TRUE),
+    CV_Raw = rowRsd(assay(res, "raw_filled")[, index_study], na.rm = TRUE),
     CV_MRM = rowRsd(
         assay(res, "median_filled")[, index_study], na.rm = TRUE),
     CV_MRM_500 = rowRsd(
@@ -514,14 +587,6 @@ study_sample <- cbind(
     CV_NOMIS = rowRsd(
         assay(res, "NOMIS")[, index_study], na.rm = TRUE)
 )
-
-#' Number <0.3
-study_summary <- matrix(ncol= ncol(study_sample), dimnames = list("CV <0.3"))
-for (i in seq_len(ncol(study_sample))){
-    study_summary["CV <0.3",i] <- sum(study_sample[, i] < 0.3, na.rm = TRUE)
-}
-colnames(study_summary) <- colnames(study_sample)
-study_summary
 
 #' Quantile
 study_df <- data.frame(
@@ -539,6 +604,30 @@ pandoc.table(study_df, style = "rmarkdown", caption = cpt)
 ruv random does manage to both decrease CV for QC and keep ity normal for study
 sample.
 But it is really weird how much the QV and IS CV is *too* decreased.
+
+```{r}
+#' Number <0.3 for both QC and 
+Summary <- matrix(ncol= ncol(QC), nrow = 4, dimnames = list(c("CV <0.3 in QC",
+                                                  "Mean of CV in QC",
+                                                  "CV <0.3 in study samples",
+                                                  "Mean of CV in Sutdy samples"
+                                                  )))
+colnames(Summary) <- colnames(QC)
+for (i in seq_len(ncol(QC))){
+    Summary["CV <0.3 in QC",i] <- sum(QC[, i] < 0.3, na.rm = TRUE)
+    Summary["Mean of CV in QC",i] <- mean(QC[, i], na.rm = TRUE)
+}
+
+#' Number <0.3 study samples
+for (i in seq_len(ncol(study_sample))){
+    Summary["CV <0.3 in study samples",i] <- sum(study_sample[, i] < 0.3, na.rm = TRUE)
+    Summary["Mean of CV in Sutdy samples",i] <- mean(QC[, i], na.rm = TRUE)
+}
+
+Summary
+## remove significant numbers ?
+```
+
 
 #### RLA
 
@@ -653,7 +742,8 @@ legend("bottomleft", inset = c(0, -0.2), col = col_phenotype,
        cex = 0.7)
 ```
 
-... or better violin plots?
+... or better violin plots? 
+(phili: i personally find them harder to read in this case..)
 
 ```{r violin evaluate norm method, include=TRUE, fig.cap = "Boxplots of signal distributions for the raw data and different sample normalization method. Note: outliers are not drawn.", fig.width = 5, fig.height = 14}
 library(vioplot)
@@ -752,50 +842,6 @@ plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
          labels = res$injection_index)
 ```
 
-RUVR
-
-```{r, include=TRUE, fig.width = 10, fig.height = 5}
-vals <- apply(assay(res, "ruvr"), MARGIN = 1, na.unidis) |>
-    log2() |>
-    scale(center = TRUE, scale = TRUE)
-
-pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
-
-par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
-plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index, main = "RUVR")
-legend("topleft", inset = c(0, -0.24), col = col_phenotype,
-       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
-       cex = 0.7, title = "Phenotype", title.cex = 0.8)
-plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index)
-```
-
-
-RUVIII
-
-```{r, include=TRUE, fig.width = 10, fig.height = 5}
-vals <- apply(assay(res, "ruv3"), MARGIN = 1, na.unidis) |>
-    log2() |>
-    scale(center = TRUE, scale = TRUE)
-
-pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
-
-par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
-plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index, main = "RUVIII")
-legend("topleft", inset = c(0, -0.24), col = col_phenotype,
-       legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
-       cex = 0.7, title = "Phenotype", title.cex = 0.8)
-plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80),
-         labels = res$injection_index)
-```
-
-
 NOMIS
 
 ```{r, include=TRUE, fig.width = 10, fig.height = 5}
@@ -818,20 +864,15 @@ plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
 ```
 
 
-
 ### Apply to dataset
 
 ```{r between-sample-choose-best, eval=FALSE, include=TRUE}
-# remove the assay or just rewrite code better as to not actually put the assay
-# in the SumExp object
-
-#' create another assay norm removing the filled data.
-tmp <- # put here
-tmp[is.na(assay(res_pos, "raw"))] <- NA
+#' we will just keep the median scaling at the end so:
+#' also need to remove 
+tmp <- assay(res, "median_filled")
+tmp[is.na(assay(res, "raw"))] <- NA
 assays(res_pos)$norm_nofill <- tmp
 rm(tmp)
-
-#' once settled on one method, i will change code before and after to match this
 ```
 
 ## Within batch normalization
@@ -850,11 +891,11 @@ measurement do not span at least 2/3 of the inject index range or for which the
 mean of the absolute residual is larger than 0.5.
 
  - look for highest abs slope plot
-
 ### linear model
 
 ```{r}
 #' take the log2 of the between sample norm results BUT remove filled in data
+#' we can discusss nest week but ye I would rerun everything based on median filled (not 500)
 tmp <- log2(assay(res, "median_filled_500"))
 tmp[is.na(assay(res, "raw"))] <- NA
 
@@ -919,8 +960,6 @@ qc_slps[unique(which(flagging))] <- NA
 fts_adj <- sort(unique(
     names(qc_lm)[!is.na(qc_lm)]))
 ```
-
-
 
 The table below lists the number of features for which the model was fitted and
 the number of features for which model fitting was skipped or discarded.
@@ -1027,6 +1066,21 @@ plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
 ```
 
 
+### Evaluating
+
+```{r}
+#prep df
+tmp <- assay(res, "median_filled_500")
+tmp[is.na(assay(res, "raw"))] <- NA #' why did you do that, otherwise remove, but remove better 
+
+y <- res$injection_index
+
+# pearson correlation between concentration ??? you mean feature abundance and 
+cor(x, y, method = "spearman") 
+
+apply(tmp, MARGIN = 1, function(z) ...cor) #'then sort it and plot and od it for after 
+```
+
 
 ## between batch norm
 
@@ -1109,70 +1163,71 @@ grid(nx = NA, ny = NULL)
 abline(h = 0, lty=3, lwd = 1, col = "black")
 ```
 
-RSD across QC samples for all features
 
-### CV
+### Internal standards
 
-In QC samples
-```{r include=TRUE, results = "asis"}
-index_QC <- res$phenotype == "QC"
+Below we can see the coefficient of variation as well as the mean and standard
+deviation of our IS between the different samples. they are compared between
+before and after normalization of our datasets. 
 
-QC <- cbind(CV_Raw = rowRsd(assay(res, "raw_filled")[, index_QC], na.rm = TRUE),
-            CV_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE)
-)
+```{r internal-standard-table, include=TRUE, results = "asis"}
+#' table of internal standards with mean and sd of abundances (in log2 scale)
+tmp_fv <- assay(res, "raw_filled")[intern_standard$feature_id, ]
+tmp_fv_norm <- assay(res, "norm")[intern_standard$feature_id, ]
+intern_standard$mean_abd <- rowMeans(log2(tmp_fv), na.rm = TRUE)
+intern_standard$mean_abd_norm <- rowMeans(log2(tmp_fv_norm), na.rm = TRUE)
+intern_standard$sd_abd <- rowSds(log2(tmp_fv), na.rm = TRUE)
+intern_standard$sd_abd_norm <- rowSds(log2(tmp_fv_norm), na.rm = TRUE)
+intern_standard$CV_raw <- rowRsd(tmp_fv, na.rm = TRUE)
+intern_standard$CV_norm <- rowRsd(tmp_fv_norm, na.rm = TRUE)
 
-#' Number <0.3
-QC_summary <- matrix(ncol= ncol(QC), dimnames = list("CV <0.3"))
-for (i in seq_len(ncol(QC))){
-    QC_summary["CV <0.3",i] <- sum(QC[, i] < 0.3, na.rm = TRUE)
-}
-colnames(QC_summary) <- colnames(QC)
-QC_summary
-
-#' Quantile
-QC_df <- data.frame(raw = quantile(QC[, "CV_Raw"], na.rm = TRUE),
-                     Norm = quantile(QC[, "CV_norm"], na.rm = TRUE)
-                     )
-cpt <- paste0("Distribution of CV values across QC samples for the raw ",
-              "normalized data.")
-pandoc.table(QC_df, style = "rmarkdown", caption = cpt)
-```
-It increases...
-
-IS
-```{r include=TRUE, results = "asis"}
-intern_standard$CV_norm <- rowRsd(
-    assay(res, "norm")[intern_standard$feature_id, ], na.rm = TRUE)
-
-cpt <- paste("Internal standards with detected and assigned features coefficient
-             of variation before and after different method of normalization.")
-pandoc.table(intern_standard[, c("abbreviation", "CV_raw", "CV_norm")],
+cpt <- paste("Internal standards with detected and assigned features, mean and",
+             "standard deviation of (log2) abundance and Coefficient of",
+             "variation before and after normalization.")
+pandoc.table(intern_standard[, 
+             c("mean_abd", "mean_abd_norm", "sd_abd", "sd_abd_norm", "CV_raw", "CV_norm")],
              style = "rmarkdown", caption = cpt)
 ```
-Some lower a little bit some increases a little bit..
+### Sample groups
 
-Study samples
 ```{r include=TRUE, results = "asis"}
 index_study <- res$phenotype %in% c("CTR", "CVD")
+index_QC <- res$phenotype == "QC"
 
-study_sample <- cbind(CV_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
+sample_res <- cbind(
+            QC_Raw = rowRsd(assay(res, "raw_filled")[, index_QC], na.rm = TRUE),
+            QC_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE),
+            Study_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
                                       na.rm = TRUE),
-            CV_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
+            Study_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
 )
 
-#' Number <0.3
-study_summary <- matrix(ncol= ncol(study_sample), dimnames = list("CV <0.3"))
-for (i in seq_len(ncol(study_sample))){
-    study_summary["CV <0.3",i] <- sum(study_sample[, i] < 0.3, na.rm = TRUE)
-}
-colnames(study_summary) <- colnames(study_sample)
-study_summary
-
 #' Quantile
-study_df$norm <- quantile(study_sample[, "CV_norm"], na.rm = TRUE)
-cpt <- paste0("Distribution of CV values across study samples for the raw ",
-              "and between-sample normalized data.")
-pandoc.table(study_df[c("raw", "norm")], style = "rmarkdown", caption = cpt)
+res_df <- data.frame(
+    QC_raw = quantile(sample_res[, "QC_Raw"], na.rm = TRUE),
+    QC_Norm = quantile(sample_res[, "QC_norm"], na.rm = TRUE),
+    Study_raw = quantile(sample_res[, "Study_Raw"], na.rm = TRUE),
+    Study_Norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE)
+    )
+cpt <- paste0("Distribution of CV values across samples for the raw and ",
+              "normalized data.")
+pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
-Increases quite significantly i think...
+```{r}
+#' Number of coefficient variation <0.3 for both QC and study samples
+Summary <- matrix(ncol= ncol(sample_res), nrow = 2, 
+                  dimnames = list(c("CV <0.3", "Mean of CV")))
+colnames(Summary) <- colnames(sample_res)
+for (i in seq_len(ncol(sample_res))){
+    Summary["CV <0.3",i] <- sum(sample_res[, i] < 0.3, na.rm = TRUE)
+    Summary["Mean of CV",i] <- mean(sample_res[, i], na.rm = TRUE)
+}
+
+cpt <- paste0("Amount of coefficient of variation below 0.3 for QC and study ",
+              "samples, before and after normalization.")
+pandoc.table(Summary, style = "rmarkdown", caption = cpt)
+```
+
+
+
