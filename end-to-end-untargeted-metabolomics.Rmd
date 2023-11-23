@@ -12,7 +12,7 @@ library("BiocStyle")
 library("knitr")
 library("rmarkdown")
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
-               cache = FALSE, fig.width = 7, fig.height = 7)
+               cache = FALSE)
 ```
 
 # Abstract
@@ -91,7 +91,6 @@ library(pander)
 library(readxl)
 library(MetaboCoreUtils)
 library(pheatmap)
-library(DESeq2)
 library(edgeR)
 ```
 
@@ -247,7 +246,7 @@ similarities between the spectra. For this we first combine spectra for each
 sample but this time first binning the all spectra. This will allow for more
 accurate comparison when generating a similarity matrix using `compareSpectra`.
 
-```{r compare spectra, echo=TRUE}
+```{r compare-spectra, echo=TRUE}
 #' Calculate similarities between BPS
 sim_matrix <- compareSpectra(bps_bin)
 pheatmap(sim_matrix)
@@ -317,7 +316,7 @@ report the maximum signal per spectrum. Conversely, when setting
 `aggregationFun = "sum"`, it sums up all intensities of a spectrum, thereby
 creating a Total Ion Chromatogram (TIC).
 
-```{r bpc}
+```{r bpc1}
 #' First extract and plot bpc for full data
 bpc <- chromatogram(data, aggregationFun = "max")
 ```
@@ -355,7 +354,7 @@ compounds eluted from the LC column. In essence, a BPC condenses the
 3-dimensional LC-MS data (m/z by retention time by intensity) into 2 dimensions
 (retention time by intensity).
 
-```{r heatmap}
+```{r heatmap1}
 #' Heatmap from total ion chromatogram
 #' - Create the TIC
 #' - Bin the intensity values within bins of 2 seconds.
@@ -379,7 +378,7 @@ IS, we looked at all of them and decided on two to follow our analysis process.
 Below, we generate Extracted Ion Chromatograms (EIC) for these "test ions".
 (here also precise that people can use commonly present ions in serum.)
 
-```{r EIC extract for internal standard, eval=FALSE, include=FALSE}
+```{r EIC extract for internal standard1, eval=FALSE, include=FALSE}
 #' get the list
 intern_standard <- read.delim("internal_standards.txt")
 intern_standard <- intern_standard[!is.na(intern_standard$POS), ]
@@ -419,7 +418,7 @@ eic_met <- chromatogram(data, rt = c(151, 171),
 
 Now we can `plot()` these EICs:
 
-```{r plot EIC, echo=FALSE}
+```{r plot EIC1, echo=FALSE}
 #' plot both EIC
 par(mfrow = c(1, 2))
 plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80))
@@ -526,7 +525,7 @@ effectiveness in handling non-Gaussian shaped chromatographic peaks or peaks
 with different retention time widths commonly encountered in HILIC
 separation.
 
-```{r Default centaweve param test}
+```{r Default centwave param test}
 #' Use default Centwave parameter
 param <- CentWaveParam()
 
@@ -572,7 +571,7 @@ The following steps involve generating a highly restricted MS area with a single
 mass per spectrum, representing the Cystine ion. These peaks are then extracted,
 and the absolute value between them is calculated and expressed in ppm.
 
-```{r ppm parameter }
+```{r ppm parameter1 }
 #' Restrict the data to signal from Cystine
 cst <- data[1L] |>
   spectra() |>
@@ -853,7 +852,7 @@ data_raw <- dropAdjustedRtime(data)
 
 We can use this to compare the BPC before and after alignment:
 
-```{r bpc before and after, echo=FALSE}
+```{r bpc before and after1, echo=FALSE}
 #' Plot the BPC before and after alignment
 par(mfrow = c(2,1), mar = c(2, 1, 1, 0.5))
 chromatogram(data_raw, aggregationFun = "max", chromPeaks = "none") |>
@@ -874,7 +873,7 @@ legend("topright", col = col_phenotype,
 
 Can also observe it in our ions of interest:
 
-```{r specific ion before and after, echo=FALSE}
+```{r specific ion before and after1, echo=FALSE}
 #' Similar comparison but this time filtering to see cystine
 par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
 
@@ -1110,7 +1109,7 @@ together, and then we will replace the detected values with `NA`.
 Then, we calculate the row averages of both of these matrices and plot them
 against each other.
 
-```{r Detected vs filled signal}
+```{r Detected vs filled signal1}
 
 #' Get only detected signal in QC samples
 vals_detect <- featureValues(data, filled = FALSE)[, QC_samples]
@@ -1228,7 +1227,7 @@ estimate and correct LC-MS specific biases.
 
 ## Packages
 
-```{r packages used}
+```{r packages used1}
 library(CompMetaboTools)
 library(MetaboAnnotation)
 ```
@@ -1272,7 +1271,7 @@ Look for overall biases in batch, sample, injection index,...
 - scale (center and scale) on columns (features after the t() call) to
 remove dependency on absolute abundances.
 
-```{r unsupervised checks, include=TRUE, fig.width = 10, fig.height = 5}
+```{r unsupervised checks1, include=TRUE, fig.width = 10, fig.height = 5}
 vals <- assay(res, "raw_filled_imputed") |>
     log2() |>
     t() |>
@@ -1304,7 +1303,7 @@ NA values and evaluate the PCA again.
 
 Counts of non missing values and feature abundance distribution
 
-```{r counts, fig.height=7, fig.width=5, include=TRUE}
+```{r counts1, fig.height=7, fig.width=5, include=TRUE}
 layout(mat = matrix(1:3, ncol = 1), height = c(0.2, 0.2, 0.8))
 
 par(mar = c(0.2, 4.5, 0.2, 3))
@@ -1336,7 +1335,7 @@ When used across groups, they allow to compare behavior between groups. Below we
 will perform the former to show relative abundance of each sample to the other
 sample of the same group by setting `group = res$phenotype`.
 
-```{r rla-plot raw and filled, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
+```{r rla-plot raw and filled1, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
 par(mfrow = c(1, 1), mar = c(0.2, 4.5, 2.5, 3))
 boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
         cex = 0.5, pch = 16,
@@ -1490,7 +1489,7 @@ title(main = "Full data set PCA after norm", cex = 0.5)
 
 ### RLA
 
-```{r rla-plot after norm, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
+```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
 par(mfrow = c(2, 1), mar = c(1, 4, 3, 1))
 
 boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
@@ -1520,7 +1519,7 @@ Below we can see the coefficient of variation as well as the mean and standard
 deviation of our IS between the different samples. they are compared between
 before and after normalization of our datasets. 
 
-```{r internal-standard-table, include=TRUE, results = "asis"}
+```{r internal-standard-table2, include=TRUE, results = "asis"}
 #' table of internal standards with mean and sd of abundances (in log2 scale)
 tmp_fv <- assay(res, "raw_filled")[intern_standard$feature_id, ]
 tmp_fv_norm <- assay(res, "norm")[intern_standard$feature_id, ]
