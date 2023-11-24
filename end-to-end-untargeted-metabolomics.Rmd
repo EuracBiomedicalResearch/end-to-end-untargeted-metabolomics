@@ -1277,40 +1277,45 @@ list.files()
 
 # Data normalization
 
-After preprocessing, data normalization or scaling may be applied to remove any
-technical and biological variances from the data. While simple approaches like
+After preprocessing, data normalization or scaling might needed to be applied to
+remove any technical variances from the data. While simple approaches like
 median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
-preprocessCore.
+*preprocessCore*.
 
 Unwanted variation can arise from various sources and is highly dependent on the
 experiment. Therefore, data normalization should be chosen carefully based on
 experimental design, statistical aims, and the balance of accuracy and precision
 achieved through the use of auxiliary information.
 
-Sample preparation biases can be evaluated using internal standard. QC samples
-are independent from of the sample preparation steps, therefore can be used to
-estimate and correct LC-MS specific biases.
+Sample preparation biases could be evaluated using internal standards, depending
+however also when they were added to the sample mixes during sample
+processing. Repeated measurements of QC samples (usually a pool of the study
+samples) on the other hand allows to estimate and correct for LC-MS specific
+biases.
+
 
 ## Packages
 
 ```{r packages used1}
-library(CompMetaboTools)
+library(CompMetaboTools) # might want to get rid of this one though.
 library(MetaboAnnotation)
 ```
 
 ## Initial quality assessment
 
-First need to load the results and the preprocessed dataset. We also create a
-new `assay` within the result object and impute the `NA` values.
-In this analysis, all metabolites are considered. We assume that most missing
-values (i.e. those not removed because of technical problems) are representing
-signal which is below detection limit. In such cases,
-missing values are replaced with random numbers from the uniform distribution
-from the half of smallest measured value to the smallest measured value for that
-analyte.  The uniform distribution is defined with two parameters (minimum and
-maximum) and all values between them have an equal probability of being
-selected.
+A principal component analysis (PCA) is a very helpful tool for an initial,
+unsupervised, quality assessment. In order to apply a PCA to the measured
+feature abundances, we need however to impute missing values. We assume that
+most missing values (after the gap-filling step) represent signal which is below
+detection limit. In such cases, missing values can be replaced with random
+values from the uniform distribution sampling numbers from half of smallest
+measured value to the smallest measured value for a specific feature. The
+uniform distribution is defined with two parameters (minimum and maximum) and
+all values between them have an equal probability of being selected.
+
+Below we impute missing values with that approach and add the resulting data
+matrix as a new *assay* to our result object.
 
 ```{r}
 #' Load preprocessing results
@@ -1378,10 +1383,13 @@ barplot(apply(assay(res, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
         col = col_sample, ylab = "features raw data", xaxt = "n", space = 0.012)
 barplot(apply(assay(res, "raw_filled"), MARGIN = 2, function(x) sum(!is.na(x))),
         col = col_sample, ylab = "features filled data", xaxt = "n", space = 0.012)
-boxplot(log2(assay(res, "raw_filled")), xaxt = "n", ylab = "log2 abundance filled data",
+boxplot(log2(assay(res, "raw_filled")), xaxt = "n",
+        ylab = expression(log[2]~abundance~filled~data),
         col = col_sample, outline=FALSE, medlty = "blank", border = col_sample,
         boxwex = 0.99 )
-points(colMeans(log2(assay(res, "raw_filled")), na.rm = TRUE), type = "l")
+points(colMedians(log2(assay(res, "raw_filled")), na.rm = TRUE), type = "b",
+       pch = 16) # would draw the median instead of the mean - if you drop the
+                                        # median line from the boxplot
 grid(nx = NA, ny = NULL)
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
@@ -1392,8 +1400,8 @@ The plot above show that the gap filling steps allowed to rescue quite a number
 of NAs and allowed us to have a more equivalent number of features per sample.
 As we assume that every sample should have a similar amount of features detected.
 
-We can also observe that the samples are not showing very important variation
-in their mean and median.
+We can also observe that, on average, the signal distribution from the
+individual samples is very similar.
 
 Another way to evaluate the distribution of value within our data are relative log
 abundance plots (RLA). Within group RLA assess the tightness of replicate within
@@ -1464,14 +1472,14 @@ is_features <- featureChromatograms(
                                      "feature_id"], expandRt = 5)
 
 par(mfrow = c(1, 2))
-    plot(is_features[1], col = col_sample,
-         peakBg = paste0(col_sample[chromPeaks(is_features)[, "sample"]], 40),
-         main = "methionine_13C_15N")
-    abline(v = intern_standard["methionine_13C_15N", "RT"], lty = 2)
-    plot(is_features[2], col = col_sample,
-         peakBg = paste0(col_sample[chromPeaks(is_features)[, "sample"]], 40),
-         main = "cystine_13C_15N")
-    abline(v = intern_standard["cystine_13C_15N", "RT"], lty = 2)
+plot(is_features[1, ], col = col_sample,
+     peakBg = paste0(col_sample[chromPeaks(is_features[1, ])[, "sample"]], 40),
+     main = intern_standard["methionine_13C_15N", "name"])
+abline(v = intern_standard["methionine_13C_15N", "RT"], lty = 2)
+plot(is_features[2, ], col = col_sample,
+     peakBg = paste0(col_sample[chromPeaks(is_features[2, ])[, "sample"]], 40),
+     main = intern_standard["cystine_13C_15N", "name"])
+abline(v = intern_standard["cystine_13C_15N", "RT"], lty = 2)
 ```
 
 As anticipated, our two internal standards have effectively identified features.
@@ -1517,11 +1525,12 @@ assays(res)$norm <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn,
 #' Also create an assay normalised with no filled or imputed data
 tmp <- assay(res, "norm")
 tmp[is.na(assay(res, "raw"))] <- NA
-assays(res)$norm_nofill <- tmp
+assays(res)$norm_nofill <- tmp # do we actually need the norm_nofill? If possible I would drop
 rm(tmp)
 ```
 
 ## Assessing overall effectiveness of the normalization approach
+
 ### PCA
 
 ```{r fig.width=7, include=TRUE}
@@ -1554,6 +1563,10 @@ plot_pca(pca_res_norm, pc_x = 1, pc_y = 2, pch = 21,
 title(main = "Full data set PCA after norm", cex = 0.5)
 ```
 
+... nothing changed basically; meaning also that data was already OK before
+normalization.
+
+
 ### RLA
 
 ```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
@@ -1579,6 +1592,7 @@ abline(h = 0, lty=3, lwd = 1, col = "black")
 ```
 
 ...Looks much better...
+
 
 ### Internal standards
 
@@ -1608,6 +1622,7 @@ pandoc.table(intern_standard[,
 
 ...describe results... (they all increase..but could also say they stay
 relatively the same)
+jo: would say they stay the same. no big changes.
 
 ### Sample groups
 
@@ -1616,11 +1631,11 @@ index_study <- res$phenotype %in% c("CTR", "CVD")
 index_QC <- res$phenotype == "QC"
 
 sample_res <- cbind(
-            QC_Raw = rowRsd(assay(res, "raw_filled")[, index_QC], na.rm = TRUE),
-            QC_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE),
-            Study_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
-                                      na.rm = TRUE),
-            Study_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
+    QC_Raw = rowRsd(assay(res, "raw_filled")[, index_QC], na.rm = TRUE),
+    QC_norm = rowRsd(assay(res, "norm")[, index_QC], na.rm = TRUE),
+    Study_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
+                       na.rm = TRUE),
+    Study_norm = rowRsd(assay(res, "norm")[, index_study], na.rm = TRUE)
 )
 
 #' Quantile
@@ -1635,8 +1650,22 @@ cpt <- paste0("Distribution of CV values across samples for the raw and ",
 pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
-Plotting nstead ?
+```{r}
+library(vioplot)
+vioplot(sample_res)
+grid()
+```
+
+plotting does not really bring a lot.
 ...describe results...
+
+- as expected CV of QCs (technical variance) is lower than for study
+  (technical + biological variance) samples
+- minimal reduction of CVs by normalization
+- no between sample difference present in raw data: no sample preparation or
+  processing bias, all samples measured in the same run, thus no differences due
+  to biases from MS instrumentation.
+
 
 ```{r}
 #' Number of coefficient variation <0.3 for both QC and study samples
@@ -1654,15 +1683,14 @@ pandoc.table(Summary, style = "rmarkdown", caption = cpt)
 ```
 
 Not sure which table to keep.
+jo: would keep the first table. 75% quantile is 0.31 anyway, thus 75% of data
+have a CV < 31%.
 
 ### Conclusion
 
-No much difference but still the RLA plot showed that it allowed to centered the data around the median...
-for bigger and more complex datatset...
+No much difference but still the RLA plot showed that it allowed to centered the
+data around the median...  for bigger and more complex datatset...
 
-
-## Averaging replicates
-- Do I do that ?
 
 # Identification of interesting features
 
