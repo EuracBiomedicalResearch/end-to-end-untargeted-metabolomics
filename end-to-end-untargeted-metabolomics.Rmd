@@ -926,7 +926,6 @@ plot(old_eic_met, main = "Methionine before alignment",
 grid()
 abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 
-
 eic_met <- chromatogram(data,  mz = met_mz + c(-0.05, 0.05),
                         rt =  c(155, 165))
 plot(eic_met, main = "Methionine after alignment",
@@ -1083,7 +1082,6 @@ chromatogram(data[c(2, 3)],
              rt = farea[, c("rtmin", "rtmax")],
              mz = farea[, c("mzmin", "mzmax")]) |>
     plot(col = c("red", "blue"), lwd = 2)
-
 ```
 
 .. Discuss example
@@ -1159,6 +1157,7 @@ grid()
 abline(0, 1)
 
 ```
+
 ... looks really nice.
 
 Then calculate statistics on these values. below we fit a linear regression
@@ -1255,6 +1254,7 @@ biases.
 library(CompMetaboTools) # might want to get rid of this one though.
 library(MetaboAnnotation)
 ```
+
 
 ## Initial quality assessment
 
@@ -1475,12 +1475,6 @@ nf_mdn <- mdns / median(mdns)
 #' divide dataset by median of median and create a new assay.
 assays(res)$norm <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn,
                                    '/')
-
-#' Also create an assay normalised with no filled or imputed data
-tmp <- assay(res, "norm")
-tmp[is.na(assay(res, "raw"))] <- NA
-assays(res)$norm_nofill <- tmp # do we actually need the norm_nofill? If possible I would drop
-rm(tmp)
 ```
 
 ## Assessing overall effectiveness of the normalization approach
@@ -1546,7 +1540,6 @@ abline(h = 0, lty=3, lwd = 1, col = "black")
 ```
 
 ...Looks much better...
-
 
 ### Internal standards
 
