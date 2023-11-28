@@ -114,8 +114,6 @@ pd <- read_xlsx("data/phenodata.xlsx") |>
 #' Massive data bank extraction but for now not.
 MZML_PATH <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML"
 
-#' register(MulticoreParam(6)) ask johannes about that
-#' jo: maybe less. 2 or 4 would be OK.
 data <- readMsExperiment(paste0(MZML_PATH, "/", pd$mzML_file), sampleData = pd)
 ```
 
@@ -147,7 +145,7 @@ provides additional details about the samples in our dataset.
 ```{r phenodata, echo=FALSE}
 sampleData(data)[, -5] |>
   as.data.frame() |>
-  pandoc.table(style = "simple", caption = "Samples from the data set.", )
+  pandoc.table(style = "rmarkdown", caption = "Samples from the data set.")
 ```
 
 There are `r length(sampleData(data))` samples in this data set. Below are
@@ -232,7 +230,7 @@ spectra data avoids this problem.
 ```{r bps, echo=TRUE, fig.width = 12, fig.height = 8, fig.cap = "Base peak spectra for the 10 samples of the experiment."}
 #' binning and combining all spectra per file into a single spectrum
 bps <- spectra(data) |>
-    bin(binSize = 0.01, zero.rm = TRUE) |>
+    bin(binSize = 0.01) |>
     combineSpectra(f = fromFile(data), intensityFun = max, ppm = 5)
 
 #' Plot the base peak spectra
@@ -302,7 +300,6 @@ exspec <- data |>
     filterRt(c(25, 35)) |>
     spectra()
 
-
 plotSpectra(exspec[10:13])
 ```
 
@@ -366,6 +363,9 @@ compounds eluted from the LC column. In essence, a BPC condenses the
 3-dimensional LC-MS data (m/z by retention time by intensity) into 2 dimensions
 (retention time by intensity).
 
+Below we plot a heatmap derived from the TIC, we also used binning as a memory
+saver and to group the intensity to facilitate comparison between samples. 
+
 ```{r heatmap1}
 #' Heatmap from total ion chromatogram
 #' - Create the TIC
@@ -379,9 +379,9 @@ ticmap <- do.call(cbind, lapply(tic, intensity)) |>
 rownames(ticmap) <- colnames(ticmap) <- sampleData(data)$sample_name
 ann <- data.frame(phenotype = sampleData(data)[, "phenotype"])
 rownames(ann) <- rownames(ticmap)
+
 pheatmap(ticmap, annotation_col = ann,
          annotation_colors = list(phenotype = col_phenotype))
-
 ```
 
 - QCs separating from study.
@@ -417,11 +417,11 @@ intern_standard$rtmin <- intern_standard$RT - 10
 intern_standard$rtmax <- intern_standard$RT + 10
 
 #' jo: maybe plot all of them? or too much info?
+#' phili: i would put it as supplementary 
 eic_is <- chromatogram(
     data,
     rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
     mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
-plot(eic_is)
 
 #' jo: maybe even add information to that?
 fData(eic_is)$mz <- intern_standard$mz
@@ -429,6 +429,12 @@ fData(eic_is)$rt <- intern_standard$RT
 fData(eic_is)$name <- intern_standard$name
 fData(eic_is)$abbreviation <- intern_standard$abbreviation
 rownames(eic_is) <- intern_standard$abbreviation
+
+cpt <- paste("Internal standard list with respective m/z and expected", 
+"retention time (s)")
+fData(eic_is)[, c("mz", "rt")] |>
+  as.data.frame() |>
+  pandoc.table(style = "rmarkdown", caption = cpt)
 ```
 
 After extracting and looking at each of the IS present in our data, we decided
@@ -437,23 +443,11 @@ to visualize cystine and Methionine
 ```{r}
 #' Extract cystine and Methionine m/z for future use.
 cystine_mz <- intern_standard["cystine_13C_15N", "mz"]
-
-#' Extract EIC
-eic_cystine <- chromatogram(data, rt = c(195, 218),
-                           mz = cystine_mz + c(-0.05, 0.05),
-                           aggregationFun = "max")
-#' jo: or alternatively like this?
-eic_cystine <- eic_is["cystine_13C_15N", ]
-
-#' Methionine
 met_mz <- intern_standard["methionine_13C_15N", "mz"]
 
-eic_met <- chromatogram(data, rt = c(151, 171),
-                        mz = met_mz + c(-0.05, 0.05),
-                        aggregationFun = "max")
-#' jo: alternatively:
+#' Plot the two IS
+eic_cystine <- eic_is["cystine_13C_15N", ]
 eic_met <- eic_is["methionine_13C_15N", ]
-
 ```
 
 Now we can `plot()` these EICs:
@@ -473,11 +467,9 @@ abline(v = fData(eic_met)$rt, col = "red", lty = 3)
 legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
 ```
 
-... describe EICs
-- Cystine there is a clear concentration difference between
-QCs and study samples.
-- Methionine: nice signal, bit of noise and rt shift between samples.
-
+We can see a clear concentration difference between QCs and study samples for 
+the L-Cystine ion. Methionine on the other hand shows a nice signal but some of
+noise and a bigger retention time shift between samples.
 
 It's also important to remember that these are not the endogenous compounds,
 below we compare the endogenous and artificially added cystine ions.
@@ -488,7 +480,6 @@ cysmass <- calculateMass("C6H12N2O4S2") #' not super sure about that
 cys_endo <- mass2mz(cysmass)[,1]
 
 #' Plot versus spiked
-#' jo: would not set main to show the actual m/z ranges.
 par(mfrow = c(1, 2))
 chromatogram(data, mz = cys_endo + c(-0.01, 0.01),
              rt = unlist(fData(eic_cystine)[, c("rtmin", "rtmax")]),
@@ -502,43 +493,6 @@ legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
 ```
 
 ...
-
-```{r eval=FALSE, include=FALSE}
-#' Extract and plot EIC of selected internal standard. Remove at some point
-eics <- chromatogram(
-    data, mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
-    rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
-for (i in seq_len(nrow(intern_standard))) {
-    png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
-        width = 12, height = 8, units = "cm", pointsize = 4, res = 600)
-    plot(eics[i], main = intern_standard$name[i], col = paste0(col_sample, 80))
-    grid()
-    legend("topright", col = col_phenotype,
-           legend = names(col_phenotype), lty = 1)
-    abline(v = intern_standard$RT[i], col = "red", lty = 3)
-    dev.off()
-}
-#' Notes on the EICs:
-#' - Alanine 13C 15N: signal very low, maybe other ion?
-#' - Arginine: very nice signal, RT a bit off.
-#' - Aspartic acid: very nice signal.
-#' - Carnitine: nothing there, maybe other ion?
-#' - Creatinine: nothing there, maybe other ion?
-#' - Cystine: very nice signal.
-#' - Glucose: nice signal.
-#' - Glutamic acid: very nice signal.
-#' - Glycine: signal low but ~ OK.
-#' - cystine: very nice signal, RT a bit off.
-#' - Isoleucine: multiple peaks, most likely both leucine and isoleucine.
-#' - Leucine: same as Isoleucine.
-#' - Methionine: nice signal, but some other peaks close by.
-#' - Phenylalanine: nice signal, but some other peaks close by.
-#' - Proline: signal low but ~ OK (maybe other ion?)
-#' - Serine: nice signal.
-#' - Threonine: nice signal.
-#' - Tyrosine: signal low but ~ OK.
-#' - Valine: signal OK. Other peaks close by.
-```
 
 # Data pre-processing
 
@@ -647,8 +601,7 @@ within the small retention time range usually not enough signal is present to
 properly estimate the background noise.
 
 ```{r}
-#' With more accurate parameters; snthresh reduced because peak detection
-#' on an EIC does not have enough data to properly estimate "noise"
+#' Parameters adapted for chromatographic peak detection on EICs.
 param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2,
                        snthresh = 2)
 
@@ -687,7 +640,8 @@ param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
 
 data <- findChromPeaks(data, param = param, chunkSize = 5)
 
-#' Test if we find cystine and Methionine again
+#' Test if we find Cystine and Methionine again
+#' Phili: is there a way to update the chromatogram data of `eic_is` ? Would be super cool ! but maybe that is not supported yet
 eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.01, 0.01),
                             rt = c(205, 215))
 
@@ -1715,3 +1669,32 @@ pre-filtering.
 # Session information
 
 # References
+
+# Additional informations 
+
+```{r}
+plot(eic_is)
+
+#' Notes on the EICs:
+#' - Alanine 13C 15N: signal very low, maybe other ion?
+#' - Arginine: very nice signal, RT a bit off.
+#' - Aspartic acid: very nice signal.
+#' - Carnitine: nothing there, maybe other ion?
+#' - Creatinine: nothing there, maybe other ion?
+#' - Cystine: very nice signal.
+#' - Glucose: nice signal.
+#' - Glutamic acid: very nice signal.
+#' - Glycine: signal low but ~ OK.
+#' - cystine: very nice signal, RT a bit off.
+#' - Isoleucine: multiple peaks, most likely both leucine and isoleucine.
+#' - Leucine: same as Isoleucine.
+#' - Methionine: nice signal, but some other peaks close by.
+#' - Phenylalanine: nice signal, but some other peaks close by.
+#' - Proline: signal low but ~ OK (maybe other ion?)
+#' - Serine: nice signal.
+#' - Threonine: nice signal.
+#' - Tyrosine: signal low but ~ OK.
+#' - Valine: signal OK. Other peaks close by.
+```
+```
+
