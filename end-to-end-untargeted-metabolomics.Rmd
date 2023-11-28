@@ -441,12 +441,17 @@ After extracting and looking at each of the IS present in our data, we decided
 to visualize cystine and Methionine
 
 ```{r}
-#' Extract cystine and Methionine m/z for future use.
-cystine_mz <- intern_standard["cystine_13C_15N", "mz"]
+#' Extract cystine and Methionine m/z for future use; 2 ways of doing it.
+cystine_mz <- calculateMass("C6H12N2O4S2") |> 
+  mass2mz("[M+H]+")
+cystine_mz <- cystine_mz[1, 1]
+
 met_mz <- intern_standard["methionine_13C_15N", "mz"]
 
-#' Plot the two IS
-eic_cystine <- eic_is["cystine_13C_15N", ]
+#' Plot the two IS; 2 ways of doing it.
+eic_cystine <- chromatogram(nafld,
+                            rt = c(200, 235),
+                            mz = cystine_mz + c(-0.01, 0.01))
 eic_met <- eic_is["methionine_13C_15N", ]
 ```
 
@@ -641,12 +646,18 @@ param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
 data <- findChromPeaks(data, param = param, chunkSize = 5)
 
 #' Test if we find Cystine and Methionine again
-#' Phili: is there a way to update the chromatogram data of `eic_is` ? Would be super cool ! but maybe that is not supported yet
-eic_cystine <- chromatogram(data, mz = cystine_mz + c(-0.01, 0.01),
-                            rt = c(205, 215))
+#' Phili: I'm thinking of putting the eic_is object in a different variables so that as additional info we can plot the IS after each steps and compare 
+eics_is_noprocess <- eic_is
 
-eic_met <- chromatogram(data, mz = met_mz + c(-0.01, 0.01),
-                        rt = c(155, 165))
+eic_is <- chromatogram(data,
+                       rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
+                       mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
+fData(eic_is) <- fData(eics_is_noprocess)
+# like this ? or create an fData object kind of ? 
+
+eic_cystine <- eic_is["cystine_13C_15N", ]
+
+eic_met <- eic_is["methionine_13C_15N", ]
 ```
 
 ```{r plot new eics, echo=FALSE}
@@ -727,6 +738,23 @@ data <- refineChromPeaks(data, param = param, chunkSize = 5)
 chromPeakData(data)$merged |>
                       table()
 ```
+
+apply to internal standard object 
+
+```{r}
+eics_is_chrompeaks <- eic_is
+
+eic_is <- chromatogram(data,
+                       rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
+                       mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
+fData(eic_is) <- fData(eics_is_chrompeaks)
+# like this ? or create an fData object kind of ? 
+
+eic_cystine <- eic_is["cystine_13C_15N", ]
+
+eic_met <- eic_is["methionine_13C_15N", ]
+```
+
 
 ## Retention time alignment
 
@@ -892,6 +920,23 @@ The biggest effect can be seen for the retention time range from 120 to 130
 seconds. Apart from that retention time range, only little changes can be
 observed.
 
+
+apply to internal standard object 
+
+```{r}
+eics_is_refined <- eic_is
+
+eic_is <- chromatogram(data,
+                       rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
+                       mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
+fData(eic_is) <- fData(eics_is_refined)
+# like this ? or create an fData object kind of ? 
+
+eic_cystine <- eic_is["cystine_13C_15N", ]
+
+eic_met <- eic_is["methionine_13C_15N", ]
+```
+
 Can also observe it in our ions of interest:
 
 ```{r specific ion before and after1, echo=FALSE}
@@ -906,8 +951,6 @@ plot(old_eic_cystine, main = "Cystine before alignment",  peakType = "none",
 grid()
 abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
 
-eic_cystine <- chromatogram(data,  mz = cystine_mz + c(-0.05, 0.05),
-                            rt = c(205, 214))
 plot(eic_cystine, "Cystine after alignment", peakType = "none",
      col = paste0(col_sample, 80))
 grid()
@@ -926,8 +969,6 @@ plot(old_eic_met, main = "Methionine before alignment",
 grid()
 abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 
-eic_met <- chromatogram(data,  mz = met_mz + c(-0.05, 0.05),
-                        rt =  c(155, 165))
 plot(eic_met, main = "Methionine after alignment",
      peakType = "none", col = paste0(col_sample, 80))
 grid()
@@ -990,7 +1031,7 @@ parameter. Let's see what happens when it is lowered to `bw = 2`.
 Note:
 
 ```{r}
-#'Updating parameters
+#' Updating parameters
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                         minFraction = 0.75, binSize = 0.015, bw = 1.8)
 
@@ -1029,6 +1070,8 @@ plotChromPeakDensity(
     peakBg = paste0(col_sample[chromPeaks(chr_test)[, "sample"]], 20),
     peakPch = 16)
 ```
+
+
 
 Looks good
 
@@ -1645,9 +1688,6 @@ data around the median...  for bigger and more complex datatset...
 - Differential abundance analysis.
     r Biocpkg("limma") or other packages
 
-Task: sensitivity analysis: with/without normalization. with/without
-pre-filtering.
-
 
 # Annotation
 
@@ -1666,7 +1706,7 @@ pre-filtering.
 # Additional informations 
 
 ```{r}
-plot(eic_is)
+plot(eics_is_noprocess)
 
 #' Notes on the EICs:
 #' - Alanine 13C 15N: signal very low, maybe other ion?
@@ -1688,6 +1728,13 @@ plot(eic_is)
 #' - Threonine: nice signal.
 #' - Tyrosine: signal low but ~ OK.
 #' - Valine: signal OK. Other peaks close by.
+#' 
+
+plot(eics_is_chrompeaks) # show chrompeak detection 
+plot(eics_is_refined) # show refinement effect
+plot(eic_is) # show alignment effect
+# no need for really anything else ? 
+
 ```
-```
+
 
