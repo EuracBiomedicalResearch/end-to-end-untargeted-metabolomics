@@ -1657,21 +1657,6 @@ plotting does not really bring a lot.
   to biases from MS instrumentation.
 
 
-```{r}
-#' Number of coefficient variation <0.3 for both QC and study samples
-Summary <- matrix(ncol= ncol(sample_res), nrow = 2,
-                  dimnames = list(c("CV <0.3", "Mean of CV")))
-colnames(Summary) <- colnames(sample_res)
-for (i in seq_len(ncol(sample_res))){
-    Summary["CV <0.3",i] <- sum(sample_res[, i] < 0.3, na.rm = TRUE)
-    Summary["Mean of CV",i] <- mean(sample_res[, i], na.rm = TRUE)
-}
-
-cpt <- paste0("Amount of coefficient of variation below 0.3 for QC and study ",
-              "samples, before and after normalization.")
-pandoc.table(Summary, style = "rmarkdown", caption = cpt)
-```
-
 Not sure which table to keep.
 jo: would keep the first table. 75% quantile is 0.31 anyway, thus 75% of data
 have a CV < 31%.
