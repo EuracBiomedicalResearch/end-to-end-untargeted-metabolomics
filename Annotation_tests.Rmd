@@ -1,0 +1,270 @@
+---
+title: "Aligning MS2 data to MS1"
+author: "Philippine Louail"
+date: "2024-01-31"
+output: html_document
+---
+
+
+```{r packages used, message=FALSE, warning=FALSE}
+library(MsExperiment)
+library(xcms)
+library(Spectra)
+library(RColorBrewer)
+library(pander)
+library(readxl)
+library(MetaboCoreUtils)
+library(MetaboAnnotation)
+```
+
+```{r}
+#' Set up parallel processing using 2 cores
+if (.Platform$OS.type == "unix") {
+    register(bpstart(MulticoreParam(2)))
+} else {
+    register(bpstart(SnowParam(2)))
+}
+```
+Evaluate shift between run1 and run2: 
+
+# Annotate features from run1  to database based on m/z only
+
+get run1 data
+
+```{r}
+#' Import run1 data 
+load("data_after_DA.RData")
+run1 <- data
+
+col_phenotype <- brewer.pal(8, name = "Dark2")[c(1,2, 5)]
+names(col_phenotype) <- c("QC", "CVD",
+                          "CTR")
+col_sample <- col_phenotype[sampleData(run1)$phenotype]
+
+#import run2 data
+load("run2_after_refined.RData")
+
+col_phenotype2 <- brewer.pal(8, name = "Dark2")[c(8, 4, 3)]
+names(col_phenotype2) <- c("QC",
+                          "CVD",
+                          "CTR")
+col_sample2 <- col_phenotype2[sampleData(run2)$phenotype]
+```
+
+```{r}
+# prep inputs - features 
+query <- featureDefinitions(run1)[, "mzmed", drop = FALSE]
+colnames(query) <- "mz"
+query$feature_id <- rownames(featureDefinitions(run1))
+
+
+
+# prep inputs - database
+library(AnnotationHub)
+library(CompoundDb)
+ah <- AnnotationHub()
+query(ah, "MassBank")
+mb <- ah[["AH116166"]]
+
+db <- compounds(mb, columns = c("compound_id", "name", "formula", "exactmass"))
+
+# match
+param <- Mass2MzParam(adducts = c("[M+H]+", "[M+Na]+", "[M+H-NH3]+"),
+                      tolerance = 0.005, ppm = 0)
+
+matched_features <- matchValues(query, db, param)
+matched_features #Lot of matches 
+
+#Let's check for the differentially abundant features
+sign_fts <- c("FT0668", "FT6474", "FT1045", "FT0525", "FT0759")
+
+for(i in sign_fts){
+    idc <- which(query$feature_id == i)
+    tmp <- matched_features[idc]
+    table <- head(as.data.frame(matchedData(tmp, c("target_formula", "target_name", 
+                                                        "adduct",
+                                                        "score", "ppm_error")))
+                  , 10)
+    table <- table[order(table$score), ]
+    pandoc.table(style = "rmarkdown", caption = i, table)
+}
+
+# Comment: I will look more into them. But caffeine is still caffeine aha. 
+# - we can discuss them during our next meeting i'll prep a little background on all of them !
+```
+
+
+# Matching feature from run1 to ms2 spectrum from run2 and annotating 
+
+Allows for higher confidence of annotation
+
+```{r eval=FALSE, include=FALSE}
+#' Import run2 data
+path <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML/mzML_LCMSMS/"
+filename <- list.files(path = path, pattern = "\\.mzML$")
+run2 <- readMsExperiment(paste0(path, filename))
+
+run2 <- filterRt(run2, c(10, 240)) #same filtering as run1
+
+## add quick phenodata 
+sampleData(run2)$phenotype <- c(rep("CVD", 5), rep("CTR", 5), rep("QC", 5))
+sampleData(run2)$frag_method <- c(rep(c("CE20", "CE30", "CE40", "CES", "NA"), 3))
+
+spectra(run2) |>
+    msLevel() |>
+    split(fromFile(run2)) |>
+    lapply(table)
+```
+
+
+```{r prep spectra object}
+# ms2 spectra object
+low_int <- function(x, ...) {
+    x > max(x, na.rm = TRUE) * 0.05
+}
+
+run2_spectra <- spectra(run2)|>
+    filterMsLevel(2) |> 
+    filterIntensity(intensity = low_int)
+
+# remove spectra that have one peak only
+run2_spectra <- run2_spectra[lengths(run2_spectra) > 1]
+
+#' add fragmentation data to spectradata 
+spectraData(run2_spectra)$frag_method <- regmatches(
+    spectraData(run2_spectra)$dataOrigin, 
+    regexpr("(CE20|CE30|CE40|CES)", spectraData(run2_spectra)$dataOrigin))
+
+#database
+mb <- Spectra(mb)
+
+#' Do same filtering as for our spectra data
+mb <- filterIntensity(mb, intensity = low_int)
+mb <- mb[lengths(mb) > 1]
+```
+
+## Annotation strategy 1 matchValues
+
+```{r }
+query <- spectraData(run2_spectra) # i have to do that because matchValue does
+#not allow for a Spectra object to be query (I need to look into it)
+
+target <- featureDefinitions(run1)
+
+#' matchvalue + remove the double matches 
+mtch <- matchValues(query, target, mzColname = c("precursorMz", "mzmed"),
+        rtColname = c("rtime", "rtmed"),
+        param = MzRtParam(ppm = 10, tolerance = 0, toleranceRt = 2))
+param <- SingleMatchParam(duplicates = "closest", column = "score_rt",
+                          decreasing = TRUE)
+mtch <- filterMatches(mtch, param)
+
+# reduce spectra object for which there are matches + get fts ID 
+res_ms2 <- run2_spectra[queryIndex(mtch)]
+res_ms2$feature_id <- rownames(featureDefinitions(run1))[targetIndex(mtch)]
+
+#Annotation 
+prm <- CompareSpectraParam(ppm = 10, requirePrecursor = TRUE, 
+                           THRESHFUN = function(x) which(x >= 0.5)) 
+register(SerialParam())
+
+for (i in unique(res_ms2$feature_id)) {
+    tmp <- res_ms2[res_ms2$feature_id == i, ]
+    mtch <- matchSpectra(tmp, mb, param = prm)
+    mtch <- mtch[whichQuery(mtch)]
+    if (length(mtch) > 0) {
+        tmp <- featureChromatograms(run1, features = i, expandRt= 1)
+        plot(tmp, col = col_sample, main = i, lwd = 2)
+        abline(v = mtch$rtime)
+        grid()
+        legend("topright", col = col_phenotype, 
+               legend = names(col_phenotype), lty = 1, cex = 1)
+        table <- head(as.data.frame(spectraData(mtch, c("target_name", "score", 
+                                                        "rtime",
+                                                        "frag_method"))))
+        table <- table[order(table$score, decreasing = TRUE), ]
+        pandoc.table(style = "rmarkdown", caption = i, table)
+    }
+}
+```
+
+Observations: 
+- few features are matched to database, and only one that was significant from
+  the differential abundance analysis 
+- CE20 fragmentation seems to be the one giving all the top results
+- anyway to increase match with database ?
+
+```{r eval=FALSE, include=FALSE}
+#' do they map with the feature that were significant ? 
+annot_fts <- unique(res_ms2$feature_id)
+intersect(sign_fts, annot_fts) #one fts has no matches 
+```
+
+
+## Annotation strategy 3: Using filterRanges
+
+```{r}
+#' here the target will be range of features using featureArea
+target <- as.data.frame(featureArea(run1))
+
+#' use this in new filterRanges function (use apply)
+test <- apply(target[, c("rtmin", "rtmax", "mzmin", "mzmax")], MARGIN = 1, 
+              FUN = filterRanges, object = run2_spectra,
+              spectraVariables = c("rtime", "precursorMz"))
+
+test1 <- lapply(test, function(x) length(x) > 1)
+idc <- which(unlist(test1))
+# keep only non null matches
+test <- test[idc]
+
+intersect(sign_fts, names(test)) # also missing one signficant
+
+length(annot_fts) # from strategy 1
+length(names(test)) #from strategy 2, one less 
+```
+
+```{r}
+# Want to get similar output as before 
+prm <- CompareSpectraParam(ppm = 10, requirePrecursor = TRUE, 
+                           THRESHFUN = function(x) which(x >= 0.5)) 
+
+for (i in names(test)) {
+    mtch <- matchSpectra(test[[i]], mb, param = prm)
+    mtch <- mtch[whichQuery(mtch)]
+    if (length(mtch) > 0) {
+        tmp <- featureChromatograms(run1, features = i, expandRt= 1)
+        plot(tmp, col = col_sample, main = i, lwd = 2)
+        abline(v = mtch$rtime)
+        grid()
+        legend("topright", col = col_phenotype, 
+               legend = names(col_phenotype), lty = 1, cex = 1)
+        table <- head(as.data.frame(spectraData(mtch, c("target_name",
+                                                        "score",
+                                                        "rtime",
+                                                        "frag_method"))))
+        table <- table[order(table$score, decreasing = TRUE), ]
+        pandoc.table(style = "rmarkdown", caption = i, table)
+    }
+}
+
+# Comments: One more annotated peak !
+# I could also extend the feature area !!
+```
+
+
+### Alignment: strategy 4, fit loess based on features from run1 and CP from run2 and properly align. 
+- Using Lama
+
+Let's apply the same preprocessing param as for the run1
+
+```{r eval=FALSE, include=FALSE}
+#' chrompeak detect
+param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
+run2 <- findChromPeaks(run2, param = param, chunkSize = 5, msLevel = 1)
+
+#' refinement 
+param <- MergeNeighboringPeaksParam(expandRt = 5, expandMz = 0.01, minProp = 0.75)
+run2 <- refineChromPeaks(run2, param = param, chunkSize = 5)
+
+save(run2, file = "run2_after_refined.RData")
+```
