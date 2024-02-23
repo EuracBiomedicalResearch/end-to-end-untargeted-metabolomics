@@ -143,7 +143,8 @@ role in LC-MS/MS analysis. Table 1 below build using the *pander* package
 provides additional details about the samples in our dataset.
 
 ```{r phenodata, echo=FALSE}
-sampleData(data)[, -5] |>
+sampleData(data)[, c("mzML_file", "injection_index", "phenotype",
+                     "sample_name", "age")] |>
   as.data.frame() |>
   pandoc.table(style = "rmarkdown", caption = "Samples from the data set.")
 ```
@@ -197,8 +198,8 @@ Below we also determine the retention time range for the entire data set.
 ```{r}
 #' Retention time range for entire dataset
 spectra(data) |>
-rtime() |>
-range()
+    rtime() |>
+    range()
 ```
 
 Data obtained from LC-MS experiments are typically analyzed along the retention
@@ -722,7 +723,7 @@ that should remain separate.
 
 ```{r test merging}
 #' set up the parameter
-param <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.01,
+param <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.0015,
                                     minProp = 0.75)
 
 #' Perform the peak refinement on the EICs
@@ -1701,7 +1702,7 @@ res_unfilt <- res
 After normalizing our data we can now pre-filter to clean the data before
 performing any statistical analysis. In general, pre-filtering of samples and features is performed to remove outliers.
 
-### Features filtering
+### Feature prefiltering
 
 Here we will remove the the features that have
 QC samples are usually the best to "clean" our dataset or systematic and
@@ -1717,26 +1718,74 @@ Considering our QC samples, we will first use the previously calculated
 coefficient of variation and filter out all features with a coefficient above
 30% in these.
 
+We first restrict the data set to features for which a chromatographic peak was
+detected in at least 2/3 of samples of at least one of the study samples groups.
+This ensures the statistical tests performed later on the study samples being
+performed on *reliable* signal. Also, with this filter we remove features that
+were mostly detected in QC samples, but not the study samples. Such filter can
+be performed with `filterFeatures` and the `PercentMissingFilter`
+setting. Parameter `threshold` of this filter defines the maximal acceptable
+percentage of samples with missing value(s) in at least in one of the sample
+groups defined by parameter `f`. To consider detected chromatographic peaks per
+sample, we apply the filter on the `"raw"` assay of our result object, that
+contains an abundance value only for detected chromatographic peaks (prior
+gap-filling). By replacing the `"QC"` sample group for parameter `f` we consider
+only study samples. With `threshold = 40` we remove features for which no peak
+was identified in 2 out of the 3 samples per sample group.
+
+```{r}
+#' Restrict to features that have at least two detected peaks in at least
+#' one of the **study** sample groups.
+f <- res$phenotype
+f[f == "QC"] <- NA
+f <- as.factor(f)
+res <- filterFeatures(res, PercentMissingFilter(f = f, threshold = 40),
+                      assay = "raw")
+```
+
+We next evaluate the RSD (CV) and Dratio for all features in the data set. We
+compute these values on the same values that would be used later for the
+differential abundance analysis, i.e. the normalized (gap filled and imputed)
+feature abundances (assay `"norm_imputed"`).
+
+```{r}
+#' Calculate the RSD/CV on the QC samples
+rsd <- rowRsd(assay(res, "norm_imputed")[, res$phenotype == "QC"])
+
+#' Calculate the Dratio
+dratio <- rowDratio(assay(res, "norm_imputed")[, res$phenotype != "QC"],
+                    assay(res, "norm_imputed")[, res$phenotype == "QC"])
+```
+
+Below we evaluate the distribution of the RSD and the Dratio and directly
+compare the two estimates per feature.
+
+```{r, fig.cap = "Distribution of RSD and Dratio values and comparison of RSD vs Dratio."}
+#' jo: puzzling, why are the Dratios so large? Maybe we should skip
+#' this comparison?
+par(mfrow = c(1, 3))
+plot(density(rsd), xlab = "RSD")
+grid()
+abline(v = 0.3, col = "#ff000080", lty = 3)
+plot(density(dratio), xlab = "Dratio")
+grid()
+plot(rsd, dratio, xlab = "RSD", ylab = "Dratio", pch = 21, col = "#00000060")
+grid()
+```
 
 ```{r}
 #' jo: should we consider both filters, or just apply one of the two?
-filter_rsd <- RsdFilter(threshold = 0.3, qcIndex = res$phenotype == "QC")
-res <- filterFeatures(res, filter = filter_rsd)
+#' would suggest to run only one of the two, and prefer the Dratio over the RSD
+#' did also make a more stringend Dratiofilter, with this we get 4 significant
+#' features, including caffeine.
+## filter_rsd <- RsdFilter(threshold = 0.3, qcIndex = res$phenotype == "QC")
+## res <- filterFeatures(res, filter = filter_rsd, assay = "norm_imputed")
 
-filter_dratio <- DratioFilter(threshold = 0.5,
-                 qcIndex = res$phenotype == "QC",
-                 studyIndex = res$phenotype != "QC")
-res <- filterFeatures(res, filter = filter_dratio)
-```
-
-We could now also remove features based on their detection rate within QC or
-study samples. Here due to our very small sample size, we will perform this by
-phenotype and will only keep features that are detected into 2/3 of the samples.
-
-```{r eval=FALSE, include=FALSE}
-missing_data_filter <- PercentMissingFilter(threshold = 30,
-                                       f = res$phenotype)
-res <- filterFeatures(res, filter = missing_data_filter)
+filter_dratio <- DratioFilter(threshold = 0.4,
+                              qcIndex = res$phenotype == "QC",
+                              studyIndex = res$phenotype != "QC",
+                              mad = TRUE)
+res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 ```
 
 ```{r}
@@ -1755,7 +1804,10 @@ res_qc <- res[, res$phenotype == "QC"]
 res <- res[, res$phenotype != "QC"]
 ```
 
-Now our data set has been preprocessed, normalized and filtered we can now start to understand the distribution of the data and estimate the variation due to biology.
+Now our data set has been preprocessed, normalized and filtered we can now start
+to understand the distribution of the data and estimate the variation due to
+biology.
+
 
 ## Differential abundance analysis.
 
@@ -1792,6 +1844,7 @@ legend("topright", col = col_phenotype, legend = names(col_phenotype), lty=1,
        lwd = 2, xpd = TRUE, inset = c(0, -0.13), ncol = 3, cex = 0.7,
        title = "Phenotype", title.cex = 0.8,
        bty = "n")
+
 ```
 
 By age
@@ -1814,6 +1867,8 @@ legend("topright", col = col_age, legend = levels(cut(res$age, length(col_age)))
 #' eachother, so not sure what to do for the publication. I'll try to figure
 #' something out. Probably need to do a deep dive in ggplot. would be nice also
 #' for later plots anyway.
+#' jo: I guess we can drop that alltogether, there seems to be no age
+#' dependency in the data.
 ```
 
 Linear models
@@ -1833,18 +1888,12 @@ m.cut <- 0.5      # cut-off for log2 fold change
 age <- res$age
 phenotype <- factor(res$phenotype)
 
-#'Fit the data to the desired design
-design <- model.matrix(~ 0 + phenotype + age)
+#' Fit the linear model to the data, explaining metabolite
+#' concentrations by phenotype and age.
+design <- model.matrix(~ phenotype + age)
 fit <- lmFit(log2(assay(res, "norm_imputed")), design = design)
-
-#' Fit the actual contrasts of interest (she made a contrast matrix i'm confused by that)
-contr_mat <- makeContrasts(
-    CVDvsCTR = phenotypeCTR - phenotypeCVD,
-    levels = design)
-fit <- contrasts.fit(fit, contrasts = contr_mat)
 fit <- eBayes(fit)
 ```
-
 
 Generate a data frame with the coefficients, the raw and adjusted p-values
 (we apply a Benjamini-Hochberg correction for better
@@ -1853,28 +1902,26 @@ and CTRL samples and whether or not a feature is to be considered significant.
 
 ```{r}
 tmp <- data.frame(
-    coef = fit$coefficient[, "CVDvsCTR"],
-    pvalue = fit$p.value[, "CVDvsCTR"],
-    adjp = p.adjust(fit$p.value[, "CVDvsCTR"], method = "BH"),
+    coef.CVD = fit$coefficients[, "phenotypeCVD"],
+    pvalue.CVD = fit$p.value[, "phenotypeCVD"],
+    adjp.CVD = p.adjust(fit$p.value[, "phenotypeCVD"], method = "BH"),
     avg.CVD = rowMeans(
         log2(assay(res, "norm_imputed")[, res$phenotype == "CVD"])),
     avg.CTR = rowMeans(
         log2(assay(res, "norm_imputed")[, res$phenotype == "CTR"]))
-    )
-tmp$significant <- abs(tmp$coef) > m.cut & tmp$adjp < p.cut
+)
+tmp$significant.CVD <- abs(tmp$coef.CVD) > m.cut & tmp$adjp.CVD < p.cut
 rowData(res) <- cbind(rowData(res), tmp)
 ```
-
-Only one feature significant... should prob check before filtering...
 
 - check distribution of raw and adjusted p values
 
 ```{r histogram, echo = FALSE, fig.cap = "Distribution of raw (left) and adjusted p-values (right)."}
 par(mfrow = c(1, 2))
-hist(rowData(res)$pvalue, breaks = 64, xlab = "p value",
+hist(rowData(res)$pvalue.CVD, breaks = 64, xlab = "p value",
      main = "Distribution of raw p-values",
      cex.main = 1, cex.lab = 1, cex.axis = 1)
-hist(rowData(res)$adjp, breaks = 64, xlab = expression(p[BH]~value),
+hist(rowData(res)$adjp.CVD, breaks = 64, xlab = expression(p[BH]~value),
      main = "Distribution of adjusted p-values",
      cex.main = 1, cex.lab = 1, cex.axis = 1)
 ```
@@ -1884,7 +1931,7 @@ hist(rowData(res)$adjp, breaks = 64, xlab = expression(p[BH]~value),
 ```{r volcano, echo = FALSE, fig.cap = "Volcano plot showing the analysis results."}
 #' this is the only code i#m not sure about, i need to check if i can do it another way
 par(mfrow = c(1, 1), mar = c(5, 5, 5, 1))
-plot(rowData(res)$coef, -log10(rowData(res)$adjp),
+plot(rowData(res)$coef.CVD, -log10(rowData(res)$adjp.CVD),
      xlab = expression(log[2]~difference),
      ylab = expression(-log[10]~p[BH]), pch = 16, col = "#00000060",
      cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.3)
@@ -1892,28 +1939,33 @@ rect(xleft = -100, ybottom = -log10(p.cut), xright = -m.cut, ytop = 100,
      border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
 rect(xleft = m.cut, ybottom = -log10(p.cut), xright = 100, ytop = 100,
      border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
-if (any(rowData(res)$significant)) {
-    points(rowData(res)$coef[rowData(res)$significant],
-           -log10(rowData(res)$adjp[rowData(res)$significant]),
+if (any(rowData(res)$significant.CVD)) {
+    points(rowData(res)$coef.CVD[rowData(res)$significant.CVD],
+           -log10(rowData(res)$adjp.CVD[rowData(res)$significant.CVD]),
            col = "#0000ffcc")
 }
 ```
 
 ```{r}
 #' nb of significant features
-sum(rowData(res)$significant)
+sum(rowData(res)$significant.CVD)
 ```
 
 
 ```{r result-table, echo = FALSE, results = "asis"}
 ## Write result table
-tab <- rowData(res)[rowData(res)$significant,
-                    c("mzmed", "rtmed", "coef", "adjp",
+tab <- rowData(res)[rowData(res)$significant.CVD,
+                    c("mzmed", "rtmed", "coef.CVD", "adjp.CVD",
                       "avg.CTR", "avg.CVD")]
-tab <- tab[order(tab$adjp, abs(tab$coef)), ]
+tab <- tab[order(abs(tab$coef.CVD), decreasing = TRUE), ]
 pandoc.table(
     as.data.frame(tab), style = "rmarkdown",
     caption = "Features with significant differences in abundances.")
+```
+
+```{r}
+#' just checking the rsd for these features:
+rowRsd(assay(res_qc, "norm_imputed")[rownames(tab), ])
 ```
 
 ```{r}
