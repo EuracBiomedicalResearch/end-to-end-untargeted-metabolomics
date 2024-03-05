@@ -143,7 +143,8 @@ role in LC-MS/MS analysis. Table 1 below build using the *pander* package
 provides additional details about the samples in our dataset.
 
 ```{r phenodata, echo=FALSE}
-sampleData(data)[, -5] |>
+sampleData(data)[, c("mzML_file", "injection_index", "phenotype",
+                     "sample_name", "age")] |>
   as.data.frame() |>
   pandoc.table(style = "rmarkdown", caption = "Samples from the data set.")
 ```
@@ -178,7 +179,7 @@ spectra(data)
 ```
 ```{r}
 #' Check Ms level
-spectra(data) |> 
+spectra(data) |>
     msLevel() |>
     split(fromFile(data)) |>
     lapply(table)
@@ -197,8 +198,8 @@ Below we also determine the retention time range for the entire data set.
 ```{r}
 #' Retention time range for entire dataset
 spectra(data) |>
-rtime() |>
-range()
+    rtime() |>
+    range()
 ```
 
 Data obtained from LC-MS experiments are typically analyzed along the retention
@@ -373,7 +374,7 @@ compounds eluted from the LC column. In essence, a BPC condenses the
 (retention time by intensity).
 
 Below we plot a heatmap derived from the TIC, we also used binning as a memory
-saver and to group the intensity to facilitate comparison between samples. 
+saver and to group the intensity to facilitate comparison between samples.
 
 ```{r heatmap1, eval=FALSE}
 #' Heatmap from total ion chromatogram
@@ -419,14 +420,14 @@ intern_standard$mz <- mapply(intern_standard$formula,
                              intern_standard$POS, FUN = mass2mz)
 
 ##' Extract the EICs
-#' Expand the m/z range by 0.05 on both sides
-intern_standard$mzmin <- intern_standard$mz - 0.05
-intern_standard$mzmax <- intern_standard$mz + 0.05
+#' Expand the m/z range by 0.005 on both sides
+intern_standard$mzmin <- intern_standard$mz - 0.005
+intern_standard$mzmax <- intern_standard$mz + 0.005
 intern_standard$rtmin <- intern_standard$RT - 10
 intern_standard$rtmax <- intern_standard$RT + 10
 
 #' jo: maybe plot all of them? or too much info?
-#' phili: i would put it as supplementary 
+#' phili: i would put it as supplementary
 eic_is <- chromatogram(
     data,
     rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
@@ -439,7 +440,7 @@ fData(eic_is)$name <- intern_standard$name
 fData(eic_is)$abbreviation <- intern_standard$abbreviation
 rownames(eic_is) <- intern_standard$abbreviation
 
-cpt <- paste("Internal standard list with respective m/z and expected", 
+cpt <- paste("Internal standard list with respective m/z and expected",
 "retention time (s)")
 fData(eic_is)[, c("mz", "rt")] |>
   as.data.frame() |>
@@ -450,17 +451,8 @@ After extracting and looking at each of the IS present in our data, we decided
 to visualize cystine and Methionine
 
 ```{r}
-#' Extract cystine and Methionine m/z for future use; 2 ways of doing it.
-cystine_mz <- calculateMass("C6H12N2O4S2") |> 
-  mass2mz("[M+H]+")
-cystine_mz <- cystine_mz[1, 1]
-
-met_mz <- intern_standard["methionine_13C_15N", "mz"]
-
-#' Plot the two IS; 2 ways of doing it.
-eic_cystine <- chromatogram(data,
-                            rt = c(200, 235),
-                            mz = cystine_mz + c(-0.01, 0.01))
+#' Plot the two IS.
+eic_cystine <- eic_is["cystine_13C_15N"]
 eic_met <- eic_is["methionine_13C_15N", ]
 ```
 
@@ -481,21 +473,22 @@ abline(v = fData(eic_met)$rt, col = "red", lty = 3)
 legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
 ```
 
-We can see a clear concentration difference between QCs and study samples for 
-the L-Cystine ion. Methionine on the other hand shows a nice signal but some of
-noise and a bigger retention time shift between samples.
+We can see a clear concentration difference between QCs and study samples for
+the L-Cystine ion. The labeled methionine internal standard, on the other hand
+shows a nice signal but some of noise and a bigger retention time shift between
+samples.
 
 It's also important to remember that these are not the endogenous compounds,
 below we compare the endogenous and artificially added cystine ions.
 
 ```{r}
-#' extract endogenous D4-cystine mass and EIC and plot.
+#' extract endogenous cystine mass and EIC and plot.
 cysmass <- calculateMass("C6H12N2O4S2") #' not super sure about that
 cys_endo <- mass2mz(cysmass)[,1]
 
 #' Plot versus spiked
 par(mfrow = c(1, 2))
-chromatogram(data, mz = cys_endo + c(-0.01, 0.01),
+chromatogram(data, mz = cys_endo + c(-0.005, 0.005),
              rt = unlist(fData(eic_cystine)[, c("rtmin", "rtmax")]),
              aggregationFun = "max") |>
     plot(col = paste0(col_sample, 80)) |>
@@ -655,14 +648,14 @@ param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2)
 data <- findChromPeaks(data, param = param, chunkSize = 5)
 
 #' Test if we find Cystine and Methionine again
-#' Phili: I'm thinking of putting the eic_is object in a different variables so that as additional info we can plot the IS after each steps and compare 
+#' Phili: I'm thinking of putting the eic_is object in a different variables so that as additional info we can plot the IS after each steps and compare
 eics_is_noprocess <- eic_is
 
 eic_is <- chromatogram(data,
                        rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
                        mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
 fData(eic_is) <- fData(eics_is_noprocess)
-# like this ? or create an fData object kind of ? 
+# like this ? or create an fData object kind of ?
 
 eic_cystine <- eic_is["cystine_13C_15N", ]
 
@@ -730,7 +723,7 @@ that should remain separate.
 
 ```{r test merging}
 #' set up the parameter
-param <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.01,
+param <- MergeNeighboringPeaksParam(expandRt = 2.5, expandMz = 0.0015,
                                     minProp = 0.75)
 
 #' Perform the peak refinement on the EICs
@@ -748,7 +741,7 @@ chromPeakData(data)$merged |>
                       table()
 ```
 
-apply to internal standard object 
+apply to internal standard object
 
 ```{r}
 eics_is_chrompeaks <- eic_is
@@ -757,7 +750,7 @@ eic_is <- chromatogram(data,
                        rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
                        mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
 fData(eic_is) <- fData(eics_is_chrompeaks)
-# like this ? or create an fData object kind of ? 
+# like this ? or create an fData object kind of ?
 
 eic_cystine <- eic_is["cystine_13C_15N", ]
 
@@ -840,7 +833,7 @@ alignment is not corrected.
 # Grouping the peaks
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype == "QC",
                           minFraction = 0.9,
-                          binSize = 0.01,
+                          binSize = 0.01, ppm = 10,
                           bw = 2)
 data <- groupChromPeaks(data, param = param)
 ```
@@ -931,7 +924,7 @@ The biggest effect can be seen for the retention time range from 120 to 130
 seconds. Apart from that retention time range, only little changes can be
 observed.
 
-apply to internal standard object 
+apply to internal standard object
 
 ```{r}
 eics_is_refined <- eic_is
@@ -940,7 +933,7 @@ eic_is <- chromatogram(data,
                        rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
                        mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]))
 fData(eic_is) <- fData(eics_is_refined)
-# like this ? or create an fData object kind of ? 
+# like this ? or create an fData object kind of ?
 
 eic_cystine <- eic_is["cystine_13C_15N", ]
 
@@ -954,7 +947,7 @@ Can also observe it in our ions of interest:
 par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
 
 old_eic_cystine <- chromatogram(data_raw,
-                                mz = cystine_mz + c(-0.05, 0.05),
+                                mz = cystine_mz + c(-0.005, 0.005),
                                 rt = c(200, 217))
 plot(old_eic_cystine, main = "Cystine before alignment", peakType = "none",
      col = paste0(col_sample, 80))
@@ -972,7 +965,7 @@ Little difference
 ```{r echo=FALSE}
 #' Same for Met
 par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
-old_eic_met <- chromatogram(data_raw, mz = met_mz + c(-0.05, 0.05),
+old_eic_met <- chromatogram(data_raw, mz = met_mz + c(-0.005, 0.005),
                             rt =  c(150, 172))
 plot(old_eic_met, main = "Methionine before alignment",
      peakType = "none", col = paste0(col_sample, 80))
@@ -1043,7 +1036,8 @@ Note:
 ```{r}
 #' Updating parameters
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
-                        minFraction = 0.75, binSize = 0.015, bw = 1.8)
+                          minFraction = 0.75, binSize = 0.01, ppm = 10,
+                          bw = 1.8)
 
 plotChromPeakDensity(
     eic_cystine, param = param,
@@ -1065,13 +1059,17 @@ Now...
 data <- groupChromPeaks(data, param = param)
 ```
 
+jo: would it make sense to discuss the difference with and without `ppm`? Maybe
+that's too much. But we should discuss that `ppm` is by default 0, but should be
+set to a value > 0 for e.g. TOF instruments.
+
 Test appropriate grouping by examining an area with ions that are isomers:
 1-MethylMethionine and 3-MethylMethionine.
 
 ```{r}
 #' Extract chromatogram with signal for isomers 1-Methylhistidine and
 #' 3-Methylhistidine
-chr_test <- chromatogram(data, mz = met_mz + c(-0.01, 0.01),
+chr_test <- chromatogram(data, mz = met_mz + c(-0.005, 0.005),
                          rt = c(0, 200),aggregationFun = "max")
 plotChromPeakDensity(
     chr_test, simulate = FALSE,
@@ -1097,7 +1095,7 @@ featureValues(data, method = "sum") |>
   head()
 ```
 
-F00005 and F00006 contain missing values in some samples
+F00003 and F00006 contain missing values in some samples
 
 ## Gap filling
 
@@ -1526,9 +1524,9 @@ mdns <- apply(assay(res, "raw_filled"), MARGIN = 2,
 nf_mdn <- mdns / median(mdns)
 
 #' divide dataset by median of median and create a new assay.
-#' phili: shouldn't we use raw_filled_imputed here ? 
+#' phili: shouldn't we use raw_filled_imputed here ?
 assays(res)$norm <- sweep(assay(res, "raw_filled"), MARGIN = 2, nf_mdn, '/')
-assays(res)$norm_imputed <- sweep(assay(res, "raw_filled_imputed"), MARGIN = 2, 
+assays(res)$norm_imputed <- sweep(assay(res, "raw_filled_imputed"), MARGIN = 2,
                                   nf_mdn, '/')
 ```
 
@@ -1658,7 +1656,7 @@ cpt <- paste0("Distribution of CV values across samples for the raw and ",
 pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
-I updated the rowRsd() to include MAD. it decreased the CV for quite a lot. 
+I updated the rowRsd() to include MAD. it decreased the CV for quite a lot.
 
 ```{r}
 library(vioplot)
@@ -1688,25 +1686,25 @@ data around the median...  for bigger and more complex datatset...
 
 # Identification of interesting features
 
-number of features 
+number of features
 ```{r}
 load("SumExp_afternorm.RData")
 load("data_afternorm.RData")
-#' Number of features before filtering 
+#' Number of features before filtering
 nrow(res)
 
-#' keep unfitered object 
+#' keep unfitered object
 res_unfilt <- res
 ```
 
 ## Quality control
 
 After normalizing our data we can now pre-filter to clean the data before
-performing any statistical analysis. In general, pre-filtering of samples and features is performed to remove outliers. 
+performing any statistical analysis. In general, pre-filtering of samples and features is performed to remove outliers.
 
-### Features filtering 
+### Feature prefiltering
 
-Here we will remove the the features that have 
+Here we will remove the the features that have
 QC samples are usually the best to "clean" our dataset or systematic and
 random errors. In our dataset, because our QC pool samples are NOT pools of
 the samples but pool of other biological samples, we are more limited in their
@@ -1720,25 +1718,74 @@ Considering our QC samples, we will first use the previously calculated
 coefficient of variation and filter out all features with a coefficient above
 30% in these.
 
+We first restrict the data set to features for which a chromatographic peak was
+detected in at least 2/3 of samples of at least one of the study samples groups.
+This ensures the statistical tests performed later on the study samples being
+performed on *reliable* signal. Also, with this filter we remove features that
+were mostly detected in QC samples, but not the study samples. Such filter can
+be performed with `filterFeatures` and the `PercentMissingFilter`
+setting. Parameter `threshold` of this filter defines the maximal acceptable
+percentage of samples with missing value(s) in at least in one of the sample
+groups defined by parameter `f`. To consider detected chromatographic peaks per
+sample, we apply the filter on the `"raw"` assay of our result object, that
+contains an abundance value only for detected chromatographic peaks (prior
+gap-filling). By replacing the `"QC"` sample group for parameter `f` we consider
+only study samples. With `threshold = 40` we remove features for which no peak
+was identified in 2 out of the 3 samples per sample group.
 
 ```{r}
-filter_rsd <- RsdFilter(threshold = 0.3, qcIndex = res$phenotype == "QC")
-res <- filterFeatures(res, filter = filter_rsd)
-
-filter_dratio <- DratioFilter(threshold = 0.5,
-                 qcIndex = res$phenotype == "QC",
-                 studyIndex = res$phenotype != "QC")
-res <- filterFeatures(res, filter = filter_dratio)
+#' Restrict to features that have at least two detected peaks in at least
+#' one of the **study** sample groups.
+f <- res$phenotype
+f[f == "QC"] <- NA
+f <- as.factor(f)
+res <- filterFeatures(res, PercentMissingFilter(f = f, threshold = 40),
+                      assay = "raw")
 ```
 
-We could now also remove features based on their detection rate within QC or
-study samples. Here due to our very small sample size, we will perform this by
-phenotype and will only keep features that are detected into 2/3 of the samples.
+We next evaluate the RSD (CV) and Dratio for all features in the data set. We
+compute these values on the same values that would be used later for the
+differential abundance analysis, i.e. the normalized (gap filled and imputed)
+feature abundances (assay `"norm_imputed"`).
 
-```{r eval=FALSE, include=FALSE}
-missing_data_filter <- PercentMissingFilter(threshold = 30,
-                                       f = res$phenotype)
-res <- filterFeatures(res, filter = missing_data_filter) 
+```{r}
+#' Calculate the RSD/CV on the QC samples
+rsd <- rowRsd(assay(res, "norm_imputed")[, res$phenotype == "QC"])
+
+#' Calculate the Dratio
+dratio <- rowDratio(assay(res, "norm_imputed")[, res$phenotype != "QC"],
+                    assay(res, "norm_imputed")[, res$phenotype == "QC"])
+```
+
+Below we evaluate the distribution of the RSD and the Dratio and directly
+compare the two estimates per feature.
+
+```{r, fig.cap = "Distribution of RSD and Dratio values and comparison of RSD vs Dratio."}
+#' jo: puzzling, why are the Dratios so large? Maybe we should skip
+#' this comparison?
+par(mfrow = c(1, 3))
+plot(density(rsd), xlab = "RSD")
+grid()
+abline(v = 0.3, col = "#ff000080", lty = 3)
+plot(density(dratio), xlab = "Dratio")
+grid()
+plot(rsd, dratio, xlab = "RSD", ylab = "Dratio", pch = 21, col = "#00000060")
+grid()
+```
+
+```{r}
+#' jo: should we consider both filters, or just apply one of the two?
+#' would suggest to run only one of the two, and prefer the Dratio over the RSD
+#' did also make a more stringend Dratiofilter, with this we get 4 significant
+#' features, including caffeine.
+## filter_rsd <- RsdFilter(threshold = 0.3, qcIndex = res$phenotype == "QC")
+## res <- filterFeatures(res, filter = filter_rsd, assay = "norm_imputed")
+
+filter_dratio <- DratioFilter(threshold = 0.4,
+                              qcIndex = res$phenotype == "QC",
+                              studyIndex = res$phenotype != "QC",
+                              mad = TRUE)
+res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 ```
 
 ```{r}
@@ -1757,7 +1804,10 @@ res_qc <- res[, res$phenotype == "QC"]
 res <- res[, res$phenotype != "QC"]
 ```
 
-Now our data set has been preprocessed, normalized and filtered we can now start to understand the distribution of the data and estimate the variation due to biology. 
+Now our data set has been preprocessed, normalized and filtered we can now start
+to understand the distribution of the data and estimate the variation due to
+biology.
+
 
 ## Differential abundance analysis.
 
@@ -1773,10 +1823,10 @@ names(col_age) <- res$age
 ```
 
 First let's observe how our data separate after our adjustment to prevent
-variances other than biological. 
+variances other than biological.
 
 ```{r}
-vals<- assay(res, "norm_imputed") |>
+vals <- assay(res, "norm_imputed") |>
     t() |>
     log2() |>
     scale(center = TRUE, scale = TRUE)
@@ -1784,28 +1834,29 @@ pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
 
 par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
 plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80), 
+         col = col_sample, bg = paste0(col_sample, 80),
          labels = res$injection_index)
 title(main = "PCA with filtering: sample type", cex = 0.5)
 plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
-         col = col_sample, bg = paste0(col_sample, 80), 
+         col = col_sample, bg = paste0(col_sample, 80),
          labels = res$injection_index)
 legend("topright", col = col_phenotype, legend = names(col_phenotype), lty=1,
-       lwd = 2, xpd = TRUE, inset = c(0, -0.13), ncol = 3, cex = 0.7, 
+       lwd = 2, xpd = TRUE, inset = c(0, -0.13), ncol = 3, cex = 0.7,
        title = "Phenotype", title.cex = 0.8,
        bty = "n")
+
 ```
 
-By age 
+By age
 
 ```{r}
 par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
 plot_pca(pca_res, pc_x = 1, pc_y = 2, pch = 21,
-         col = col_age, 
+         col = col_age,
          labels = res$injection_index)
 title(main = "PCA with filtering: age", cex = 0.5)
 plot_pca(pca_res, pc_x = 3, pc_y = 4, pch = 21,
-         col = col_age[cut(res$age, length(col_age))], 
+         col = col_age[cut(res$age, length(col_age))],
          labels = res$injection_index)
 legend("topright", col = col_age, legend = levels(cut(res$age, length(col_age))),
        cex = 0.7, fill = col_age,
@@ -1815,11 +1866,13 @@ legend("topright", col = col_age, legend = levels(cut(res$age, length(col_age)))
 #' gradient. but autoplot makes it complicated to have 2 plots next to
 #' eachother, so not sure what to do for the publication. I'll try to figure
 #' something out. Probably need to do a deep dive in ggplot. would be nice also
-#' for later plots anyway. 
+#' for later plots anyway.
+#' jo: I guess we can drop that alltogether, there seems to be no age
+#' dependency in the data.
 ```
 
-Linear models 
-- set the model, one model per metabolites 
+Linear models
+- set the model, one model per metabolites
 Is multiple linear regression, but should be only applied to one metabolite by
 one as they are heavily correlated to eachother.
 
@@ -1830,23 +1883,17 @@ library(limma)
 
 #' prep parameters
 p.cut <- 0.05     # cut-off for significance.
-m.cut <- 0.5      # cut-off for log2 fold change 
+m.cut <- 0.5      # cut-off for log2 fold change
 
 age <- res$age
 phenotype <- factor(res$phenotype)
 
-#'Fit the data to the desired design
-design <- model.matrix(~ 0 + phenotype + age)
+#' Fit the linear model to the data, explaining metabolite
+#' concentrations by phenotype and age.
+design <- model.matrix(~ phenotype + age)
 fit <- lmFit(log2(assay(res, "norm_imputed")), design = design)
-
-#' Fit the actual contrasts of interest (she made a contrast matrix i'm confused by that)
-contr_mat <- makeContrasts(
-    CVDvsCTR = phenotypeCTR - phenotypeCVD,
-    levels = design)
-fit <- contrasts.fit(fit, contrasts = contr_mat)
 fit <- eBayes(fit)
 ```
-
 
 Generate a data frame with the coefficients, the raw and adjusted p-values
 (we apply a Benjamini-Hochberg correction for better
@@ -1855,38 +1902,36 @@ and CTRL samples and whether or not a feature is to be considered significant.
 
 ```{r}
 tmp <- data.frame(
-    coef = fit$coefficient[, "CVDvsCTR"],
-    pvalue = fit$p.value[, "CVDvsCTR"],
-    adjp = p.adjust(fit$p.value[, "CVDvsCTR"], method = "BH"),
+    coef.CVD = fit$coefficients[, "phenotypeCVD"],
+    pvalue.CVD = fit$p.value[, "phenotypeCVD"],
+    adjp.CVD = p.adjust(fit$p.value[, "phenotypeCVD"], method = "BH"),
     avg.CVD = rowMeans(
         log2(assay(res, "norm_imputed")[, res$phenotype == "CVD"])),
     avg.CTR = rowMeans(
         log2(assay(res, "norm_imputed")[, res$phenotype == "CTR"]))
-    )
-tmp$significant <- abs(tmp$coef) > m.cut & tmp$adjp < p.cut
+)
+tmp$significant.CVD <- abs(tmp$coef.CVD) > m.cut & tmp$adjp.CVD < p.cut
 rowData(res) <- cbind(rowData(res), tmp)
 ```
 
-Only one feature significant... should prob check before filtering... 
-
-- check distribution of raw and adjusted p values 
+- check distribution of raw and adjusted p values
 
 ```{r histogram, echo = FALSE, fig.cap = "Distribution of raw (left) and adjusted p-values (right)."}
 par(mfrow = c(1, 2))
-hist(rowData(res)$pvalue, breaks = 64, xlab = "p value",
+hist(rowData(res)$pvalue.CVD, breaks = 64, xlab = "p value",
      main = "Distribution of raw p-values",
      cex.main = 1, cex.lab = 1, cex.axis = 1)
-hist(rowData(res)$adjp, breaks = 64, xlab = expression(p[BH]~value),
+hist(rowData(res)$adjp.CVD, breaks = 64, xlab = expression(p[BH]~value),
      main = "Distribution of adjusted p-values",
      cex.main = 1, cex.lab = 1, cex.axis = 1)
 ```
 
-- plot volcano plots 
+- plot volcano plots
 
 ```{r volcano, echo = FALSE, fig.cap = "Volcano plot showing the analysis results."}
-#' this is the only code i#m not sure about, i need to check if i can do it another way 
+#' this is the only code i#m not sure about, i need to check if i can do it another way
 par(mfrow = c(1, 1), mar = c(5, 5, 5, 1))
-plot(rowData(res)$coef, -log10(rowData(res)$adjp),
+plot(rowData(res)$coef.CVD, -log10(rowData(res)$adjp.CVD),
      xlab = expression(log[2]~difference),
      ylab = expression(-log[10]~p[BH]), pch = 16, col = "#00000060",
      cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.3)
@@ -1894,28 +1939,33 @@ rect(xleft = -100, ybottom = -log10(p.cut), xright = -m.cut, ytop = 100,
      border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
 rect(xleft = m.cut, ybottom = -log10(p.cut), xright = 100, ytop = 100,
      border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
-if (any(rowData(res)$significant)) {
-    points(rowData(res)$coef[rowData(res)$significant],
-           -log10(rowData(res)$adjp[rowData(res)$significant]),
+if (any(rowData(res)$significant.CVD)) {
+    points(rowData(res)$coef.CVD[rowData(res)$significant.CVD],
+           -log10(rowData(res)$adjp.CVD[rowData(res)$significant.CVD]),
            col = "#0000ffcc")
 }
 ```
 
 ```{r}
 #' nb of significant features
-sum(rowData(res)$significant)
+sum(rowData(res)$significant.CVD)
 ```
 
 
 ```{r result-table, echo = FALSE, results = "asis"}
 ## Write result table
-tab <- rowData(res)[rowData(res)$significant,
-                    c("mzmed", "rtmed", "coef", "adjp",
+tab <- rowData(res)[rowData(res)$significant.CVD,
+                    c("mzmed", "rtmed", "coef.CVD", "adjp.CVD",
                       "avg.CTR", "avg.CVD")]
-tab <- tab[order(tab$adjp, abs(tab$coef)), ]
+tab <- tab[order(abs(tab$coef.CVD), decreasing = TRUE), ]
 pandoc.table(
     as.data.frame(tab), style = "rmarkdown",
     caption = "Features with significant differences in abundances.")
+```
+
+```{r}
+#' just checking the rsd for these features:
+rowRsd(assay(res_qc, "norm_imputed")[rownames(tab), ])
 ```
 
 ```{r}
@@ -1927,8 +1977,8 @@ for (i in rownames(fts_sign)) {
     tmp <- fts_sign[i,]
     pk_col <- col_phenotype[as.character(tmp$phenotype[chromPeaks(tmp)[, "column"]])]
     plotChromPeakDensity(tmp, peakPch = 16,
-                             peakCol = paste0(pk_col, 80),
-                             peakBg = paste0(pk_col, 10)
+                         peakCol = paste0(pk_col, 80),
+                         peakBg = paste0(pk_col, 10))
     legend("topright", col = col_phenotype,
            legend = names(col_phenotype), lty = 1, cex = 0.5)
 }
@@ -1948,7 +1998,7 @@ save(res, file = "Sum_Exp_afterDA.RData")
 
 # References
 
-# Additional informations 
+# Additional informations
 
 ```{r}
 plot(eics_is_noprocess)
@@ -1973,13 +2023,11 @@ plot(eics_is_noprocess)
 #' - Threonine: nice signal.
 #' - Tyrosine: signal low but ~ OK.
 #' - Valine: signal OK. Other peaks close by.
-#' 
+#'
 
-plot(eics_is_chrompeaks) # show chrompeak detection 
+plot(eics_is_chrompeaks) # show chrompeak detection
 plot(eics_is_refined) # show refinement effect
 plot(eic_is) # show alignment effect
-# no need for really anything else ? 
+# no need for really anything else ?
 
 ```
-
-
