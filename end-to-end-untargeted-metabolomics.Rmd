@@ -1079,6 +1079,8 @@ rtdf <- function(data, ID_table) {
 RT_raw <- rtdf(data_raw, ID_table)
 RT_adj <- rtdf(data, ID_table)
 
+
+library(MatrixGenerics) # Need it for rowSds, i thought some other package loaded it.. 
 Sdsdf <- data.frame(
     Raw = rowSds(RT_raw, na.rm = TRUE),
     Adj = rowSds(RT_adj, na.rm = TRUE)
@@ -1289,7 +1291,7 @@ featureDefinitions(data) |>
   head()
 ```
 
-We therefore have `r nrows(featureDefinitions(data))` features defined in our
+We therefore have `r nrow(featureDefinitions(data))` features defined in our
 dataset. Let's also look at the feature values:
 
 ```{r}
