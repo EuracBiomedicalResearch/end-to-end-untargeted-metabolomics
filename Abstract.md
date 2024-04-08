@@ -10,30 +10,29 @@ OR
 Streamlining LC-MS/MS Data Analysis with Open-Source *xcms* and 
 *RforMassSpectrometry*: An End-to-End Workflow
 
-Metabolomics provides a real-time view of the metabolic state of examined
-samples, with mass spectrometry serving as a key tool in deciphering intricate 
-differences in metabolomes due to specific factors. In the context of 
-metabolomic investigations, untargeted LC-MS/MS emerges as a powerful approach.
-This poster/presentation focuses on the analysis of an example dataset aimed at
-identifying variations in plasma metabolite levels between patients with 
-Arrhythmogenic Cardiomyopathy (ACM) and healthy controls. From the
-preprocessing of raw mzML files up to annotation of differentially abundant
-ions between the two groups. 
 
-Despite the potential insights offered by untargeted LC-MS/MS data, a 
-significant challenge in the field lies in the absence of a reproducible and
-scalable infrastructure for its analysis. While various specialized packages
-exist for specific analysis steps, seamless integration and adaptability to
-large cohort dataset remains elusive. Addressing this gap, we present an
-comprehensible R workflow that leverages xcms and packages of the
-RforMassSpectrometry environment to encompass all aspects of pre-processing
-and downstream analyses for LC-MS/MS datasets in a reproducible manner. Our 
-workflow seamlessly integrates Bioconductor packages, offering adaptability
+Despite untargeted LC-MS/MS data being a powerful approach in investigating 
+metabolomics, a significant challenge in the field lies in the absence of a 
+reproducible, scalable and stable infrastructure for its analysis. While various 
+specialized packages exist for specific analysis steps, seamless integration 
+and adaptability to large cohort dataset remains elusive. Addressing this gap, 
+we present an comprehensible end-to-end R workflow that leverages xcms and 
+packages of the RforMassSpectrometry environment to encompass all aspects of 
+pre-processing and downstream analyses for LC-MS/MS datasets in a reproducible
+manner.
+
+This poster/presentation delineates a step-by-step analysis of an example 
+dataset focused on discerning variations in plasma metabolite levels between 
+patients with a cardiovascular disease and healthy controls. The objective is 
+to meticulously detail each step, from the preprocessing of raw mzML files to
+the annotation of differentially abundant ions between the two groups.
+
+Our  workflow seamlessly integrates Bioconductor packages, offering adaptability
 to diverse study designs and analysis requirements. This workflow facilitates 
 preprocessing, feature detection, alignment, normalization, statistical
-analysis and annotation within a unified framework, enhancing the efficiency of
-metabolomic investigations. We also discuss alternative ways to adapt to any
-dataset and goals as well as promoting proper quality management for LC-MS
-analysis. 
+analysis and annotation within a unified framework, thereby enhancing the 
+efficiency of metabolomic investigations. We also discuss alternative 
+approaches to accommodate various dataset and goals, while emphasizing proper
+quality management for LC-MS analysis.
 
 
