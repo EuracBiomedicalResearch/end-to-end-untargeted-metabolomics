@@ -1,0 +1,442 @@
+---
+title: "Evaluating presense of fragment spectra for selected ions"
+author:
+  - name: "Philippine Louail, Vinicius Verri Hernandes, Johannes Rainer"
+affiliation: "Eurac Research, Bolzano, Italy"
+output: html_document
+date: "2023-09-07"
+---
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE)
+MZML_PATH <- "data/metabolights/mzML/"
+```
+
+# Introduction
+
+For the LC-MS/MS data from the *end-to-end workflow* an *inclusion list* was
+used to define which ions should be fragmented. In this document we evaluate for
+the different samples and collision energies employed how many fragment spectra
+were recorded for these ions.
+
+# Data import
+
+We first import the inclusion list containing the m/z an retention times of the
+ions of interest.
+
+```{r}
+library(readxl)
+il <- read_xlsx("data/InclusionList_POS.xlsx") |> as.data.frame()
+## Assigning an arbitrary ID to the ions
+il$ion_id <- xcms:::.featureIDs(nrow(il), "ION")
+```
+
+The list of selected ions is shown below.
+
+```{r, results = "asis"}
+library(pander)
+pandoc.table(il, style = "rmarkdown", caption = "Inclusion list")
+```
+
+We next import the LC-MS/MS data of the experiment.
+
+```{r}
+library(Spectra)
+library(MsExperiment)
+library(xcms)
+
+pd <- read.table("data/phenodata_lc-msms.txt", sep = "\t",
+                 header = TRUE)
+#' pd <- pd[pd$date == "2021-01-29", ] # High sensitivity data
+#' pd <- pd[pd$date == "2020-12-22", ] # Initial test
+pd <- pd[pd$date == "2021-01-28", ] # no high sensitivity
+lcmsms <- readMsExperiment(paste0(MZML_PATH, pd$mzML_file),
+                           sampleData = pd)
+```
+
+The table below lists the samples/data files and the number of MS/MS spectra per
+file.
+
+```{r, results = "asis"}
+tmp <- split(msLevel(spectra(lcmsms)), fromFile(lcmsms)) |>
+    vapply(FUN = function(z) sum(z == 2L), integer(1))
+tmp <- cbind(as.data.frame(sampleData(lcmsms)),
+             MS2_count = tmp)
+pandoc.table(tmp[, -7L], style = "rmarkdown", split.table = Inf,
+             caption = "Data files and number of MS2 spectra.")
+```
+
+There are a very large number of MS2 spectra in each LC-MS/MS data file.
+
+Below we create a general visualization of the MSMS data.
+
+```{r, fig.width = 10, fig.height = 8}
+#' @title General visualization of precursor ions of a LC-MS/MS data file
+#'
+#' Simple visualization of the position of fragment spectra's precursor ion
+#' in the MS1 retention time by m/z area.
+#'
+#' @param x `MsExperiment` of LC-MS/MS data.
+#'
+#' @param sampleIndex `integer(1L)` defining the sample from
+#'
+plotPrecursorIons <- function(x, sampleIndex = 1L, pch = 21, col = "#00000080",
+                              bg = "#00000020", xlab = "retention time",
+                              ylab = "m/z", ...) {
+    x_sub <- x[sampleIndex]
+    rtr <- range(rtime(spectra(x_sub)))
+    mzr <- range(range(mz(spectra(x_sub))))
+    pmz <- precursorMz(spectra(x_sub))
+    prt <- rtime(spectra(x_sub)[!is.na(pmz)])
+    pint <- precursorIntensity(spectra(x_sub)[!is.na(pmz)])
+    pmz <- pmz[!is.na(pmz)]
+    mn <- basename(dataOrigin(spectra(x_sub)[1L]))
+    plot(prt, pmz, xlim = rtr, ylim = mzr, pch = pch, col = col, bg = bg,
+         xlab = xlab, ylab = ylab, main = mn, ...)
+    grid()
+}
+
+tmp <- lcmsms[sampleData(lcmsms)$ms_mode == "MSMS"]
+
+par(mfrow = n2mfrow(length(tmp)))
+
+for (i in seq_along(tmp)) {
+    plotPrecursorIons(tmp, i, col = "#00000060")
+}
+```
+
+
+# Identification of fragment spectra for selected ions
+
+We next identify all MS2 spectra in the data set that match the selected ions
+with a 20ppm m/z and 4 second retention time tolerance. The matching will be
+done on the `Spectra` object, thus we below extract it and also assign the index
+of the data file in which it was measured as an additional spectra
+variable.
+
+```{r}
+s <- spectra(lcmsms)
+s$file_index <- fromFile(lcmsms)
+```
+
+Also, we *estimate* the precursor intensity for all MS2 spectra based on the
+respective signal from potential precursor ion in the previous MS1 scan. We
+could eventually use these precursor intensities as an additional cut-off
+criteria, assuming that ions with higher precursor intensity lead to more
+reliable/better fragment spectra (because more ions are being fragmented and
+intensities of fragments would/should be larger).
+
+```{r}
+#' Estimating and setting the precursor intensity for MS2 spectra
+pint <- Spectra::estimatePrecursorIntensity(s)
+s$precursorIntensity <- pint
+```
+
+In addition we remove fragment peaks with an intensity lower than 5% of the
+maximal peak intensity of a spectrum and again remove MS2 spectra with less than
+2 peaks.
+
+```{r}
+keep_peaks <- function(x) {
+    x > max(x, na.rm = TRUE) * 0.05
+}
+s <- filterIntensity(s, intensity = keep_peaks)
+s <- s[lengths(s) > 1]
+```
+
+
+Next we use the `r Biocpkg("MetaboAnnotation")` package to identify MS2 spectra
+matching any of the selected ions.
+
+```{r}
+library(MetaboAnnotation)
+il_mtch <- matchValues(
+    il, target = s, param = MzRtParam(ppm = 10, toleranceRt = 3),
+    mzColname = c("mzmed", "precursorMz"), rtColname = c("rtmed", "rtime"))
+il_mtch
+```
+
+We have thus at least one MS2 spectra for `r length(whichQuery(il_mtch))` of the
+in total `r nrow(il)` ions.
+
+We next summarize this information first by ion. In particular, we extract the
+information on the total number of fragment spectra per ion, the difference of
+the fragment spectra's retention times to the expected retention time and their
+ppm differences.
+
+```{r, results = "asis"}
+#' Extract relevant information from the matched object
+tmp <- matchedData(il_mtch, c("ion_id", "mzmed", "rtmed", "target_rtime",
+                              "score_rt", "ppm_error")) |>
+    as.data.frame()
+
+ion_summary <- split(tmp, tmp$ion_id) |>
+    lapply(FUN = function(z) {
+        cbind.data.frame(
+            ion_id = z$ion_id[1L],
+            mzmed = z$mzmed[1L],
+            rtmed = z$rtmed[1L],
+            drt = t(quantile(z$score_rt, na.rm = TRUE)),
+            mean_ppm = mean(z$ppm_error)
+        )
+    }) |>
+    do.call(what = rbind)
+pandoc.table(
+    ion_summary, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Per selected ion summary of available fragment spectra.",
+                     " Columns drt containe the quantiles of the difference ",
+                     "between expected and observed retention times ",
+                     "(negative values indicate fragment spectra eluting ",
+                     "after, positive values before rtmed) and the mean m/z ",
+                     "difference in ppm is shown in column mean_ppm."))
+```
+
+We next summarize the information per file.
+
+```{r, results = "asis"}
+tmp <- matchedData(il_mtch, c("ion_id", "mzmed", "rtmed", "target_peaksCount",
+                              "target_file_index", "score_rt", "ppm_error")) |>
+    as.data.frame()
+## For each file:
+## - number of ions
+## - number of MS2 spectra
+## - distribution of peak counts.
+file_summary <- split(tmp, tmp$target_file_index) |>
+    lapply(FUN = function(z) {
+        cbind.data.frame(
+            file_index = z$target_file_index[1L],
+            ion_count = length(unique(z$ion_id)),
+            ms2_count = nrow(z),
+            pks = t(quantile(z$target_peaksCount))
+        )
+    }) |>
+    do.call(what = rbind)
+file_summary <- cbind(
+    file_name = pd$mzML_file[file_summary$file_index],
+    file_summary)
+pandoc.table(
+    file_summary, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Per LC-MS/MS data file summary. Number of ions for which",
+                     " MS2 spectra were recorded (ion_count), total number of ",
+                     "MS2 spectra (ms2_count) and distribution of the number ",
+                     "of peaks for these."))
+```
+
+The total number of MS2 spectra for ions seems to be comparable across the
+different files (and collision energies). Only, the average number of peaks in
+the MS2 spectra seems to be higher in the pooled samples and in the sample from
+the control participant.
+
+
+## Evaluation of MS2 spectra per ion
+
+We next evaluate for each ion the recorded MS2 spectra. We would expect fragment
+peaks of the same ions to share some similarity.
+
+```{r}
+library(pheatmap)
+
+for (i in seq_along(il_mtch)) {
+    ion_match <- il_mtch[i]
+    ion_match <- pruneTarget(ion_match)
+
+    ion_ms2 <- target(ion_match)
+    if (length(ion_ms2)) {
+        ion_ms2 <- setBackend(ion_ms2, MsBackendMemory())
+
+        sim_mat <- compareSpectra(ion_ms2, ppm = 40)
+
+        ann <- data.frame(file_index = ion_ms2$file_index,
+                          rtime = round(rtime(ion_ms2)))
+        rownames(ann) <- colnames(sim_mat)
+        pheatmap(sim_mat, annotation_col = ann, main = ion_match$ion_id[1L])
+    }
+}
+```
+
+
+## Matching fragment spectra against reference database
+
+We also evaluate similarities of fragment spectra against a reference database
+(MassBank). We first prepare the `Spectra` object that we will then match
+against MassBank reducing it to spectra that were assigned to ion and adding the
+ion ID as well as an arbitrary spectrum identifier as additional spectra
+variables.
+
+```{r}
+#' Extract the matched (target) spectra. Use `targetIndex()` to specifically
+#' select the spectra that were matched and support potential n:m mapping
+#' between query and target.
+il_ms2 <- target(il_mtch)[targetIndex(il_mtch)]
+#' Get ion ID for query elements that have been matched: using again
+#' `queryIndex()` to extract IDs only of query elements that were matched.
+il_ms2$ion_id <- query(il_mtch)$ion_id[queryIndex(il_mtch)]
+#' Add also an arbitrary spectrum ID
+il_ms2$spectrum_id <- seq_along(il_ms2)
+```
+
+Setting the reference database up.
+
+```{r}
+library(AnnotationHub)
+ah <- AnnotationHub()
+mb <- ah[["AH116166"]]
+mb_ms2 <- Spectra(mb)
+#' Restricting to positive polaroty
+mb_ms2 <- filterPolarity(mb_ms2, polarity = 1L)
+#' Same filtering as before:
+#' - remove peaks with an intensity < 5% BP
+#' - remove spectra with less than 2 peaks
+mb_ms2 <- filterIntensity(mb_ms2, intensity = keep_peaks)
+mb_ms2 <- mb_ms2[lengths(mb_ms2) > 1]
+```
+
+Loading the query and reference spectra data into memory for faster processing.
+
+```{r}
+il_ms2 <- setBackend(il_ms2, MsBackendMemory())
+mb_ms2 <- setBackend(mb_ms2, MsBackendMemory())
+```
+
+Matching the query spectra against the reference. Using a bit relaxed matching
+because, depending on the instrument used, m/z values might not be perfectly
+accurate.
+
+```{r}
+il_ms2_mtch <- matchSpectra(
+    il_ms2, mb_ms2, param = CompareSpectraParam(ppm = 50))
+il_ms2_mtch
+```
+
+Only a low proportion of query spectra could be matched against the
+database. One possible reason is that some of the input ions are isotopes of the
+same compounds.
+
+Summarizing below the information per ion.
+
+```{r}
+#' clean up target spectra
+il_ms2_mtch <- pruneTarget(il_ms2_mtch)
+
+#' Extracting information on matches
+il_ms2_mtch_res <- matchedData(
+    il_ms2_mtch,
+    c("ion_id", "file_index", "spectrum_id", "rtime", "precursorMz",
+      "precursorIntensity", "target_spectrum_id", "target_formula",
+      "target_inchikey", "target_name", "target_adduct", "score")) |>
+    as.data.frame()
+```
+
+We restrict the data to ions with matches and split/process the information by
+ion.
+
+```{r}
+#' Reduce/condense rows of a `data.frame` or `matrix` `x` selecting for sets
+#' of rows (defined by `splitBy`) a single *representative*/*best* row.
+#'
+#' `x` is split into sets of `data.frame`s (or matrices) based on a `factor`
+#' that is defined using values in columns `splitBy`.
+#'
+#' ? maybe check also the `aggregate` function?
+#' ? have parameter `by` like in `aggregate` instead?
+#'
+#' Note: Maybe instead just return indices of elements to keep? then we could
+#' also use it for a `Matched` object.
+.reduce_single_row <- function(x, splitBy = character(),
+                               orderBy = character(), decreasing = TRUE) {
+    ## Needs checks that all splitBy and orderBy is in colnames
+    ## That below is pretty inefficient
+    f <- apply(x[, splitBy, drop = FALSE], 1L, paste0, collapse = "|")
+    res <- do.call(
+        rbind,
+        lapply(split.data.frame(x, factor(f, levels = unique(f))),
+               function(z) {
+                   z[order(z[, orderBy], decreasing = decreasing)[1L], ,
+                     drop = FALSE]
+               }))
+    rownames(res) <- NULL
+    res
+}
+
+#' we restrict to unique matches between distinct query spectra and compounds
+#' we use the query spectrum's retention time to identify unique query spectra
+#' and the compound's INCHIKEY to select unique target spectra.
+il_ms2_mtch_all <- .reduce_single_row(
+    il_ms2_mtch_res,
+    splitBy = c("ion_id", "rtime", "target_inchikey"),
+    orderBy = "score")
+nrow(il_ms2_mtch_all)
+```
+
+Above we reduced redundant hits to database entries, since for the same compound
+several reference fragment spectra might be available. We further reduce this
+result table counting the number of matched fragment spectra per ion.
+
+```{r, results = "asis"}
+l <- split(il_ms2_mtch_all, il_ms2_mtch_all$ion_id)
+lapply(l, function(z) {
+    cmps <- unique(z$target_name)
+    data.frame(
+        ion_id = z[1, "ion_id"],
+        no_matches = nrow(z),
+        compounds = paste0(cmps[!is.na(cmps)], collapse = "; "))
+}) |>
+    do.call(what = "rbind") |>
+    pandoc.table(style = "rmarkdown", split.table = Inf,
+                 caption = "Number of matched reference spectra and compounds.")
+```
+
+At last, we select for each ion one (the best matching) fragment spectrum per
+compound and report that.
+
+```{r, results = "asis"}
+il_ms2_mtch_best <- .reduce_single_row(
+    il_ms2_mtch_res, splitBy = c("ion_id", "target_inchikey"),
+    orderBy = "score")
+pandoc.table(
+    il_ms2_mtch_best[, c("ion_id", "rtime", "precursorMz",
+                         "target_name", "score")],
+    style = "rmarkdown", split.table = Inf,
+    caption = "Best matching compounds/reference spectra per ion.")
+```
+
+Note that all matches above are only against *[M+H]+* ions maybe reflecting the
+lack of reference spectra for other adducts.
+
+Below we plot also these best hits.
+
+```{r}
+#' reduce to ions with hits.
+tmp <- il_ms2_mtch_best[!is.na(il_ms2_mtch_best$target_spectrum_id), ]
+
+for (i in seq_len(nrow(tmp))) {
+    a <- il_ms2[il_ms2$spectrum_id == tmp[i, "spectrum_id"]] |>
+        scalePeaks()
+    b <- mb_ms2[mb_ms2$spectrum_id == tmp[i, "target_spectrum_id"]] |>
+        scalePeaks()
+    plotSpectraMirror(a, b, ppm = 50,
+                      main = paste0(tmp$ion_id[i], ": ",
+                                    tmp$target_name[i]))
+}
+```
+
+TODO: maybe better to reduce directly the `il_ms2_mtch` object, similar to the
+*best match* option, just ensure that the best, unique compound, match is
+returned.
+
+As an alternative, we match against GNPS too.
+
+```{r}
+
+```
+
+
+# Session information
+
+```{r}
+sessionInfo()
+```
