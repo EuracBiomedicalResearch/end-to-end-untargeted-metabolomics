@@ -1808,11 +1808,10 @@ effectively centered the data around the median. The medians for all samples are
 now closer to zero, indicating that the normalization process has been effective
 in reducing the bias in the data.
 
-### Internal standards
+### Coefficient of variation
 
-Below we can see the coefficient of variation as well as the mean and standard
-deviation of our IS between the different samples. they are compared between
-before and after normalization of our datasets.
+Below we can see the coefficient of variation before and after normalization in
+the different sample types as well as for the IS.
 
 ```{r include=TRUE, results = "asis"}
 index_study <- res$phenotype %in% c("CTR", "CVD")
