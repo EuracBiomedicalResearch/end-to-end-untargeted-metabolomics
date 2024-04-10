@@ -51,9 +51,9 @@ library(xcms)
 
 pd <- read.table("data/phenodata_lc-msms.txt", sep = "\t",
                  header = TRUE)
-#' pd <- pd[pd$date == "2021-01-29", ] # High sensitivity data
 #' pd <- pd[pd$date == "2020-12-22", ] # Initial test
-pd <- pd[pd$date == "2021-01-28", ] # no high sensitivity
+#' pd <- pd[pd$date == "2021-01-28", ] # no high sensitivity
+pd <- pd[pd$date == "2021-01-29", ] # High sensitivity data
 lcmsms <- readMsExperiment(paste0(MZML_PATH, pd$mzML_file),
                            sampleData = pd)
 ```
@@ -71,6 +71,20 @@ pandoc.table(tmp[, -7L], style = "rmarkdown", split.table = Inf,
 ```
 
 There are a very large number of MS2 spectra in each LC-MS/MS data file.
+
+Sciex instruments don't record/provide a precursor intensity for MS2 spectra. We
+thus below *estimate* the precursor intensity for all MS2 spectra based on the
+respective signal from potential precursor ion in the previous MS1 scan. We
+could eventually use these precursor intensities as an additional cut-off
+criteria, assuming that ions with higher precursor intensity lead to more
+reliable/better fragment spectra (because more ions are being fragmented and
+intensities of fragments would/should be larger).
+
+```{r}
+#' Estimating and setting the precursor intensity for MS2 spectra
+pint <- Spectra::estimatePrecursorIntensity(spectra(lcmsms), ppm = 20)
+lcmsms@spectra$precursorIntensity <- pint
+```
 
 Below we create a general visualization of the MSMS data.
 
@@ -109,6 +123,59 @@ for (i in seq_along(tmp)) {
 }
 ```
 
+## Evaluation of EIC signal
+
+We first check the MS1 signal for the different ions recorded in the LC-MS and
+LC-MS/MS data files. In addition, the position of the MS2 scans with a precursor
+ion within the respective m/z - retention time range is indicated. Below the
+data for all selected ions is shown.
+
+In these plots, MS1 signal for LC-MS and LC-MS/MS data files is shown in dark
+grey and dark orange color, respectively. Retention times of MS2 spectra within
+the m/z - rt range are indicated with red vertical lines. Points represent the
+intensity of the precursor ion (estimated based on the previous MS1 scan).
+
+```{r}
+#' Checking an m/z slice +/- 10 ppm around the actual ion.
+mzr <- cbind(il$mzmed - MsCoreUtils::ppm(il$mzmed, 20),
+             il$mzmed + MsCoreUtils::ppm(il$mzmed, 20))
+#' For the RT range we check -10 to +10 seconds
+rtr <- cbind(il$rtmed - 10, il$rtmed + 10)
+
+ichr <- chromatogram(lcmsms, mz = mzr, rt = rtr)
+
+library(RColorBrewer)
+col_ms_mode <- rep(brewer.pal(8, "Dark2")[8], length(lcmsms))
+col_ms_mode[sampleData(lcmsms)$ms_mode == "MSMS"] <- brewer.pal(8, "Dark2")[2]
+
+#' Iternate over ions to draw the EIC
+for (i in seq_len(nrow(il))) {
+    eic <- ichr[i, ]
+    #' get MS2 spectra in that region
+    ims2 <- spectra(lcmsms) |>
+        filterMsLevel(2L) |>
+        filterRt(rt = rtr[i, ]) |>
+        filterPrecursorMzValues(il$mzmed[i], ppm = 10)
+    #' define the y-axis limits based on all available intensnties
+    ylim <- range(unlist(lapply(eic, intensity)), na.rm = TRUE)
+    ylim <- range(ylim, precursorIntensity(ims2), na.rm = TRUE)
+    plot(eic, col = col_ms_mode, main = il$ion_id[i], ylim = ylim)
+    grid()
+    legend("topleft",
+           legend = c(paste0("mz: ", format(il$mzmed[i], digits = 6)),
+                      paste0("rt: ", format(il$rtmed[i], digits = 3))))
+    abline(v = rtime(ims2), col = "#ce000040")
+    points(rtime(ims2), precursorIntensity(ims2), col = "#ce000080")
+}
+
+```
+
+For most ions no MS1 signal was recorded (neither in the study nor in the QC
+samples). Also, fewer MS1 data points are available for LC-MS/MS data sets
+(shown in dark orange in the plot above) because of the very high number of
+fragment spectra being recorded (the instrument was thus busy selecting ions and
+creating MS2 scans).
+
 
 # Identification of fragment spectra for selected ions
 
@@ -123,18 +190,6 @@ s <- spectra(lcmsms)
 s$file_index <- fromFile(lcmsms)
 ```
 
-Also, we *estimate* the precursor intensity for all MS2 spectra based on the
-respective signal from potential precursor ion in the previous MS1 scan. We
-could eventually use these precursor intensities as an additional cut-off
-criteria, assuming that ions with higher precursor intensity lead to more
-reliable/better fragment spectra (because more ions are being fragmented and
-intensities of fragments would/should be larger).
-
-```{r}
-#' Estimating and setting the precursor intensity for MS2 spectra
-pint <- Spectra::estimatePrecursorIntensity(s)
-s$precursorIntensity <- pint
-```
 
 In addition we remove fragment peaks with an intensity lower than 5% of the
 maximal peak intensity of a spectrum and again remove MS2 spectra with less than
@@ -433,6 +488,55 @@ As an alternative, we match against GNPS too.
 ```{r}
 
 ```
+
+# Observations on the different LC-MS/MS data sets
+
+## 2020-12-22
+
+- Only data from few samples were recorded (only QC and one CVD sample).
+- MS1 signal for LC-MS and LC-MS/MS data files looks similarly good.
+- Many ions seem however not to be present (no, or very low signal).
+- Only for few selected ions (ION03, ION06, ION11) an MS2 spectrum was recorded.
+- Recorded MS2 spectra per ion are similar (differ however for different
+  collision energies).
+- Annotation:
+  - ION06: 1,7-Dimethylxanthine; Theophylline; Theobromine
+  - ION11: Caffeine; caffeine; Isocaffeine
+
+## 2021-01-28
+
+- The full set of samples is available.
+- Data was acquired with *high sensitivity* mode.
+- Ions were selected and fragmented (for the selected m/z range) along most of
+  the retention time range, selecting mostly noise.
+- Fragment spectra are available for all selected ions.
+- MS1 signal from the LC-MS data files looks similar to the data from experiment
+  2020-12-22. This also includes missing or very low signal for many ions.
+- Fragment spectra recorded at similar retention times look similar.
+- Annotation:
+  - ION05: Theophylline; 1,7-Dimethylxanthine; Aminophylline; Theobromine
+  - ION06: Aminophylline; 1,7-Dimethylxanthine; Theophylline; Theobromine
+  - ION11: Caffeine; Isocaffeine; caffeine
+  - ION21: PharmaGSID_48509 (only precursor m/z is matching!)
+
+
+## 2021-01-29
+
+- The full set of samples is available.
+- Data was acquired with *high sensitivity* mode.
+- Ions were selected and fragmented (for the selected m/z range) along most of
+  the retention time range, selecting mostly noise.
+- Fragment spectra are available for all selected ions.
+- MS1 signal from the LC-MS data files looks similar to the data from experiment
+  2020-12-22. This also includes missing or very low signal for many ions.
+- Fragment spectra recorded at similar retention times look similar; they seem
+  even to be a bit more consistent compared to the 2021-01-28 data set (maybe
+  subjective impression).
+- Annotation:
+  - ION05: Theophylline; 1,7-Dimethylxanthine; Aminophylline; Theobromine
+  - ION06: Aminophylline; 1,7-Dimethylxanthine; Theophylline; Theobromine
+  - ION11: Caffeine; Isocaffeine; caffeine
+  - ION12: (essentially the same ion that ION11) Caffeine; Isocaffeine; caffeine
 
 
 # Session information
