@@ -1,9 +1,14 @@
 ---
-title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry*
-and *xcms*"
+title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry* and *xcms*"
 author:
   - name: "Philippine Louail"
-affiliation: "Eurac Research, Bolzano, Italy"
+    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
+  - name: "Anna Tagliaferri"
+    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
+  - name: "Vinicius Verri Hernandes"
+    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
+  - name: "Johannes Rainer"
+    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
 output: html_document
 date: "2023-09-07"
 ---
@@ -22,19 +27,28 @@ Metabolomics provides a real-time view of the metabolic state of examined
 samples, with mass spectrometry serving as a key tool in deciphering intricate
 differences in metabolomes due to specific factors. In the context of
 metabolomic investigations, untargeted LC-MS/MS emerges as a powerful approach.
-This paper focuses on a dataset aimed at identifying variations in plasma
-metabolite levels between patients with Arrhythmogenic Cardiomyopathy (ACM) and
-healthy controls.
+This paper focuses on a dataset aimed at identifying differences in plasma
+metabolite levels between individuals suffering from a cardiovascular disease
+and healthy controls.
 
-Despite the potential insights offered by untargeted LC-MS/MS data, a significant
-challenge in the field lies in the absence of a reproducible and scalable
-infrastructure for its analysis. While various specialized packages exist for
-specific analysis steps, seamless integration remains elusive. Addressing this
-gap, we present an innovative R workflow that leverages *XCMS*, and packages of
-the *RforMassSpectrometry* environment to encompass all aspects of pre-processing and downstream
-analyses for LC-MS/TS datasets in a reproducible manner. Our pipeline seamlessly
-integrates Bioconductor packages, offering adaptability to diverse study designs
-and analysis requirements.
+Despite the potential insights offered by untargeted LC-MS/MS data, a
+significant challenge in the field lies in the generation of reproducible and
+scalable analysis workflows. Various software packages, also with convenient
+graphical user interfaces for the analysis of such data exist, but high variety
+of different chromatographic setups as well as MS acquisition modes and
+configurations used in untargeted metabolomics demands highly flexible and
+customizable software packages and analysis workflows [jo: the previous sentence
+needs rewriting - or maybe we remove it completely]. The power of R-based
+analysis workflows lies in their high customizability and adaptability to
+specific instrumental and experimental setups, but, while various specialized
+packages exist for individual analysis steps, their seamless integration and
+application to large cohort datasets remains elusive.  Addressing this gap, we
+present an innovative R workflow that leverages *xcms*, and packages of the
+*RforMassSpectrometry* environment to encompass all aspects of pre-processing
+and downstream analyses for LC-MS/MS datasets in a reproducible manner and allow
+an easy customization to generate data-set specific workflows. Our pipeline
+seamlessly integrates with Bioconductor packages, offering adaptability to
+diverse study designs and analysis requirements.
 
 # Keyword
 LC-MS/MS, reproducibility, workflow, xcms, R, normalization,
@@ -44,7 +58,7 @@ feature identification, Bioconductor,...
 
 LC-MS/MS is a powerful tool for metabolomics investigations, providing a
 comprehensive view of the metabolome. It enables the identification of
-metabolites and their relative abundance in biological samples. The high
+a large number of metabolites and their relative abundance in biological samples. The high
 sensitivity and specificity of LC-MS/MS make it an indispensable tool for
 biomarker discovery and elucidating metabolic pathways. The untargeted approach
 is particularly useful for hypothesis-free investigations, allowing for the
@@ -52,37 +66,42 @@ detection of unexpected metabolites and pathways. However, the analysis of
 LC-MS/MS data is complex and requires a series of preprocessing steps to
 extract meaningful information from the raw data. The main challenges are to
 deal with the lack of ground truth data, the high dimensionality of the data,
-and the presence of noise and artifacts. Moreover, the different analysis
-steps are generally taking care by specialized packages, which are not always
-easy to integrate in a single workflow. Demonstration the need for a workflow
-with seamless integration of all steps. We therefore propose a comprehensive
-workflow for the analysis of LC-MS/MS data using the R environment. We provide
-a toolset to build *customized* workflows with possibility to integrate the
-full power of the R universe, compared to (rather limited) graphical user
-interface tools. Such workflow are also crucial to the field as they ensure
-reproducibility of the analysis.
+and the presence of noise and artifacts. Moreover, due to different instrumental
+setups and used protocols the definition of a single *one-fits-all* workflow is
+impossible. Finally, while specialized software packages exist for each
+individual step during an analysis, their seamless integration remains elusive.
 
-Thus, we will go through a highly-detailed and adaptable workflow for LC-MS/MS data
-analysis. Comprising pre-processing steps rooted in the *xcms* package, known
-for its high adaptability to dataset-specific requirements. The detailed
-normalization method is designed to eliminate as much unwanted variation as
-possible. The pipeline also includes differential abundance analysis to
-identify significant features between groups. The identification of these
-features is performed using *MetaboAnnotation* (in conjunction with *SIRIUS*,
-put that in annexe),
-providing a high level of confidence in the annotation. The workflow is
-designed to be highly adaptable to different study designs and analysis
-requirements, ensuring reproducibility and scalability.
+The *RforMassSpectrometry* initiative aims to implement an expandable, flexible
+infrastructure for the analysis of MS data, providing also a comprehensive
+toolbox of functions to build customized analysis workflows.
+
+Here we present a complete analysis workflow for untargeted LC-MS/MS data using
+R and Bioconductor packages, in particular those from the *RforMassSpectrometry*
+package ecosystem. We demonstrate how the various algorithms can be adapted to
+the particular data set and how various R packages can be seamlessly integrated
+to ensure efficient and reproducible processing. The present workflow covers all
+steps for LC-MS/MS data analysis, from preprocessing, data normalization,
+differential abundance analysis and annotation of the significant
+*features*. Various options for visualizations as well as quality assessment are
+presented for all analysis steps.
+
+[jo: maybe we can have a table of all used R/Bioconductor packages and for what
+they were used]
+
 
 # Data description
 
-This dataset focuses on investigating the presence of metabolites with
-significant differences in the plasma of individuals with a Cardiovascular
-disease (CVD) compared to healthy controls (CTRL). The subset comprises
-10 mzML files, with three samples each from CVD patients and healthy donors.
-Additionally, four quality control (QC) samples, representing a pool of serum
-samples from a large cohort, are included. The MS data is confined to a
-retention time range of 20 to 230 seconds.
+The datasets used in this workflow are an LC-MS-based untargeted metabolomics
+data set to quantify small polar metabolites in human plasma samples and an
+additional LC-MS/MS data set of selected samples from the former study for the
+identification/annotation of its significant features. The samples used here
+were randomly selected from a larger study for the identification of metabolites
+with differences in abundances between individuals suffering from a
+cardiovascular disease (CVD) and healthy controls (CTRL). The subset analyzed
+here comprises data for 3 CVD and 3 CTRL as well as four quality control (QC)
+samples. The QC samples represent a pool of serum samples from a large cohort
+and were repeatedly measured throughout the experiment to monitor stability of
+the signal.
 
 The data and metadata for this workflow are accessible on the massive database
 under the ID: [ID].
@@ -90,16 +109,15 @@ under the ID: [ID].
 
 # Workflow description
 
-This pipeline here describes all steps required to preprocess and assign
-features identity to LC-MS/MS data. It is performed thanks to the *MsExperiment*
-and *Spectra* packages that integrate multiple Bioconductor packages for
-LC-MS/MS analysis. The pre-processing steps are performed using the *xcms*
-packages and consist of chromatographic peak detection, retention time alignment
-and correspondence/feature definitions. The pre-processing of the data is then followed by
-normalization, differential abundance anysis and features annotation using the
-*MetaboAnnotation* package with different level of confidence. Lastly,
-*RColorBrewer*, *pander*, *ggplot* and *pheatmap* were used for data
-visualization throughout the pipeline.
+The present workflow describes all steps for the analysis of an LC-MS/MS
+experiment, which includes the preprocessing of the raw data to generate the
+*abundance* matrix for the *features* in the various samples, followed by data
+normalization, differential abundance analysis and finally the annotation of
+features to metabolites. The packages are listed in table XXX [jo: maybe provide
+that info as a table]. Note that also alternative analysis options and R
+packages could be used for different steps and some examples are mentioned
+throughout the workflow.  [jo: I'll include some of these maybe later. It would
+be key to justify why this workflow is comprehensive]
 
 Our workflow is therefore based on the following dependencies:
 
