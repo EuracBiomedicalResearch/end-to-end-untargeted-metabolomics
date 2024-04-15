@@ -438,7 +438,7 @@ mz(spec2)
 ```
 
 [jo: removed this whole part. I don't think it did contribute to the
-comprehension of the data and might be just misleading]
+comprehension of the data and might be just confusing]
 
 
 ## Chromatographic Data Visualization
@@ -457,7 +457,7 @@ report the maximum signal per spectrum. Conversely, when setting
 creating a Total Ion Chromatogram (TIC).
 
 ```{r bpc1, echo=TRUE}
-#' First extract and plot BPC for full data
+#' Extract and plot BPC for full data
 bpc <- chromatogram(data, aggregationFun = "max")
 
 plot(bpc, col = paste0(col_sample, 80), main = "BPC", lwd = 1.5)
@@ -467,7 +467,8 @@ legend("topright", col = col_phenotype,
 ```
 
 After about 240 seconds no signal seems to be measured. Thus, we below filter
-the data removing that part as well as the first 10 seconds.
+the data removing that part as well as the first 10 seconds measured in the LC
+run.
 
 ```{r filter rt}
 #' Filter the data based on retention time
@@ -488,20 +489,24 @@ smaller file size but also facilitates a more straightforward interpretation of
 the BPC.
 
 The final plot illustrates the BPC for each sample colored by phenotype,
-providing insights into the retention times captured during our experiment. It
+providing insights on the signal measured along the retention times of each sample. It
 reveals the points at which compounds eluted from the LC column. In essence, a
-BPC condenses the 3-dimensional LC-MS data (m/z by retention time by intensity)
+BPC condenses the 3-dimensional LC-MS data (*m/z* by retention time by intensity)
 into 2 dimensions (retention time by intensity).
 
-Below we plot a heatmap derived from the TIC, we also used binning as a memory
-saver and to group the intensity to facilitate comparison between samples.
+We can also here compare similarities of the BPCs in a heatmap. The retention
+times will however not be identical between different samples. Thus we *bin* the
+chromatographic signal per sample along the retention time axis into bins of 2
+seconds resulting in data with the same number of bins/data points. We can then
+calculate pairwise similarities between these data vectors using the `cor()`
+function and visualize the result using a heatmap.
 
 ```{r heatmap1, eval=FALSE}
 #' Total ion chromatogram
 tic <- chromatogram(data, aggregationFun = "sum") |>
   bin(binSize = 2)
 
-#' Prepare heatmap
+#' Calculate similarity (Pearson correlation) between BPCs
 ticmap <- do.call(cbind, lapply(tic, intensity)) |>
   cor()
 
@@ -518,15 +523,16 @@ The heatmap above reinforces what our exploration of spectra data showed, which
 is a strong separation between the QC and study samples. This is important to
 bear in mind for later analysis.
 
-Additionally, two study samples stand out from the others; let's plot the TIC
-for these and compare with the other study samples:
+Additionally, study samples group into two clusters, cluster *I* containing
+samples *C* and *F* and cluster *II* with all other samples. Below we plot the
+TIC of all samples, using a different color for each cluster.
 
 ```{r}
-outlier_idx <- sampleData(data)$sample_name %in% c("F", "C")
-sample_idx <- sampleData(data)$sample_name %in% c("A", "B", "D", "E")
+cluster_I_idx <- sampleData(data)$sample_name %in% c("F", "C")
+cluster_II_idx <- sampleData(data)$sample_name %in% c("A", "B", "D", "E")
 
 temp_col <- c("grey", "red")
-names(temp_col) <- c("study samples", "outliers")
+names(temp_col) <- c("Cluster II", "Cluster I")
 col <- temp_col[outlier_idx + 1]
 col[sampleData(data)$phenotype == "QC"] <- NA
 
@@ -535,27 +541,35 @@ data |>
     plot( col = col,
      main = "BPC after filtering retention time", lwd = 1.5)
 grid()
-legend("topright", col = c("grey", "red"),
-       legend = c("other", "outliers"), lty = 1, lwd = 2,
+legend("topright", col = temp_col,
+       legend = names(temp_col), lty = 1, lwd = 2,
        horiz = TRUE, bty = "n")
 ```
 
-These samples exhibit different signal in the retention time range from about
-40 to 160 seconds. (need to discuss with johannes about these samples tbh)
+While over and above the TIC of all samples look similar, the samples from
+cluster I show a different signal in the retention time range from about 40 to
+160 seconds. Whether, and how strong this difference will impact the following
+analysis remains however to be determined.
+
 
 ### Known compounds
 
-Throughout the entire process, it is crucial to have reference points within
-the dataset, such as well-known ions. Most experiments nowadays include
-internal standards (IS), and it was the case here. We strongly recommend using
-them for visualization throughout the entire analysis. For this experiment, we
-had a list of 15 IS. After reviewing all of them, we selected two to guide this
-analysis process. However, we also advise to plot all the ions after each steps.
-Below, we generate Extracted Ion Chromatograms (EIC) for
-these selected 'test ions'. Additionally, in cases where internal standards
-are not available, commonly present ions in serum can serve as suitable
-alternatives. Ideally, these compounds should be distributed across the entire
-retention time range of the experiment.
+Throughout the entire process, it is crucial to have reference points within the
+dataset, such as well-known ions. Most experiments nowadays include internal
+standards (IS), and it was the case here. We strongly recommend using them for
+visualization throughout the entire analysis. For this experiment, a set of 15
+IS was spiked to all samples. After reviewing signal of all of them, we selected
+two to guide this analysis process. However, we also advise to plot all the ions
+after each steps.
+
+Below, we generate Extracted Ion Chromatograms (EIC) for these selected *test
+ions*. By restricting the MS data to intensities within a restricted, small
+*m/z* range and a selected retention time window, EICs are expected to contain
+only signal from a single type of ion. The expected *m/z* and retention times
+for our set of IS was determined in a different experiment. Additionally, in
+cases where internal standards are not available, commonly present ions in the
+sample matrix can serve as suitable alternatives. Ideally, these compounds
+should be distributed across the entire retention time range of the experiment.
 
 ```{r EIC extract for internal standard}
 #' Load our list of standard
@@ -576,14 +590,13 @@ rownames(eic_is) <- intern_standard$abbreviation
 
 #' Summary of IS information
 cpt <- paste("Internal standard list with respective m/z and expected",
-"retention time (s)")
-fData(eic_is)[, c("mz", "rt")] |>
+             "retention time [s].")
+fData(eic_is)[, c("name", "mz", "rt")] |>
   as.data.frame() |>
-  pandoc.table(style = "rmarkdown", caption = cpt)
+  pandoc.table(style = "rmarkdown", caption = cpt, split.table = Inf)
 ```
 
-After extracting and looking at each of the IS present in our data, we decided
-to extract specifically Cystine and Methionine and `plot()` these EICs
+We below plot the EICs for isotope labeled cystine and methionine.
 
 ```{r fig.height=4, fig.width=7}
 #' Extract the two IS from the chromatogram object.
@@ -607,14 +620,17 @@ legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1,
 ```
 
 We can observe a clear concentration difference between QCs and study samples
-for the L-Cystine ion. However, the labeled methionine internal standard
-exhibits a discernible signal amidst some noise and a noticeable retention
-time shift between samples.
+for the isotope labeled cystine ion. However, the labeled methionine internal
+standard exhibits a discernible signal amidst some noise and a noticeable
+retention time shift between samples.
 
-It's also crucial to note that these compounds are not endogenous. Below, we
-compare the endogenous and artificially added Cystine ions. To calculate the
-mass and charge to mass ratio of the endogenous compound for the `[M+H]+` ion
-we use `calculateMass` and `mass2mz` from the `metaboCoreUtils` package.
+While the artificially isotope labeled compounds were spiked to the individual
+samples, there should also be the signal from the endogenous compounds in serum
+(or plasma) samples. We thus below calculate next the mass and *m/z* of an
+*[M+H]+* ion of the endogenous cystine from its chemical formula and extract
+also the EIC from this ion. For calculation of the exact mass and the *m/z* of
+the selected ion adduct we use the `calculateMass()` and `mass2mz()` functions
+from the `r Biocpkg("MetaboCoreUtils")` package.
 
 ```{r}
 #' extract endogenous cystine mass and EIC and plot.
@@ -635,9 +651,11 @@ legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1,
        bty = "n")
 ```
 
-The two Cystine EICs above look extremely similar, if not for the shift in m/z,
-which arises from the artificial labeling. This shift allows us to discriminate
-between endogenous and non-endogenous compounds.
+The two cystine EICs above look highly similar (the endogenous shown left, the
+isotope labeled right in the plot above), if not for the shift in m/z, which
+arises from the artificial labeling. This shift allows us to discriminate
+between the endogenous and non-endogenous compound.
+
 
 # Data pre-processing
 
