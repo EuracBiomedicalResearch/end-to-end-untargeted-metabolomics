@@ -11,6 +11,7 @@ author:
     affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
 output: html_document
 date: "2023-09-07"
+bibliography: references.bib
 ---
 
 ```{r style, warning=FALSE, include=FALSE, results='hide'}
@@ -657,34 +658,40 @@ arises from the artificial labeling. This shift allows us to discriminate
 between the endogenous and non-endogenous compound.
 
 
-# Data pre-processing
+# Data preprocessing
 
-Pre-processing stands as the inaugural step in the analysis of untargeted LC-MS
-or gas chromatography (GC)-MS data. The primary objective of pre-processing is
+Preprocessing stands as the inaugural step in the analysis of untargeted LC-MS
+or gas chromatography (GC)-MS data. The primary objective of preprocessing is
 the quantification of signals from ions measured in a sample, addressing any
 potential retention time drifts between samples, and ensuring alignment of
-quantified signals across samples within an experiment.
+quantified signals across samples within an experiment. The final result of
+LC-MS data preprocessing is a numeric matrix with abundances of quantified
+entities in the samples of the experiment.
 
 ## Chromatographic peak detection
 
-The initial pre-processing step involves detecting the presence of peaks along
-the retention time axis. To achieve this, we employ the `findChromPeaks` function
-within *xcms*. This function supports various algorithms for peak detection, with
-notable options including:
+The initial preprocessing step involves detecting of intensity peaks along the
+retention time axis, the so called *chromatographic peaks*. To achieve this, we
+employ the `findChromPeaks()` function within *xcms*. This function supports
+various algorithms for peak detection, which can be selected and configured with
+their respective parameter objects, with notable options including:
 
 - `MatchedFilterParam`: Implements peak detection as described in the original
-  xcms article (C. A. Smith et al. 2006).
+  xcms article [@smith_xcms:_2006].
 
 - `CentWaveParam`: Utilizes continuous wavelet transformation (CWT)-based peak
-  detection (Tautenhahn, Böttcher, and Neumann 2008).
+  detection [@tautenhahn_highly_2008].
 
 - `MassifquantParam`: Employs a Kalman filter-based peak detection
-  (Conley et al. 2014).
+  [@conley_massifquant:_2014].
 
 The preferred algorithm, in this case, is *CentWave*, known for its
 effectiveness in handling non-Gaussian shaped chromatographic peaks or peaks
 with different retention time widths, commonly encountered in HILIC
 separation.
+
+Below we apply the CentWave algorithm with its default settings on the extracted
+ion chromatogram for cystine and methionine ions and evaluate its results.
 
 ```{r Default centwave param test}
 #' Use default Centwave parameter
@@ -702,24 +709,28 @@ chromPeaks(met_test)
 While *CentWave* is a highly performant algorithm, it necessitates adaptation to
 each dataset. This implies that the parameters should be fine-tuned based on the
 user's data. The example above serves as a clear motivation for users to
-familiarize themselves with the various parameters. We will discuss the main
-parameters that can be easily adjusted to suit the user's dataset:
-
-- `ppm`: Typically dependent on the precision of the instrument.
+familiarize themselves with the various parameters and the need to adapt them to
+a data set. We will discuss the main parameters that can be easily adjusted to
+suit the user's dataset:
 
 - `peakwidth`: Specifies the minimal and maximal expected width of the peaks in
-the retention time dimension. Highly dependent on the LC-MS system that
-generated the dataset.
+  the retention time dimension. Highly dependent on the chromatographic settings
+  used.
+
+- `ppm`: The maximal allowed difference of mass peaks' *m/z* values (in
+  parts-per-million) in consecutive scans to consider them representing signal
+  from the same ion.
 
 - `integrate`: This parameter defines the integration method. Here, we primarily
-use `integrate = 2` because it is more suitable for Gaussian-shaped data and is
-considered more accurate by the developers.
+  use `integrate = 2` because it integrates also signal of a chromatographic
+  peak's tail and is considered more accurate by the developers.
 
 To determine `peakwidth`, we recommend that users refer to previous EICs and
-estimate the range of peakwidth they observe in their dataset. Ideally,
-examining multiple EICs should be the goal. For this dataset, the peakwidths
-are observed to be around 2 and 10 seconds. We do not advise on going too wide
-or too narrow with the peakwidth as it can lead to false positives or negatives.
+estimate the range of peak widths they observe in their dataset. Ideally,
+examining multiple EICs should be the goal. For this dataset, the peak widths
+appear to be around 2 to 10 seconds. We do not advise on going too wide
+or too narrow with the `peakwidth` parameter as it can lead to false positives
+or negatives.
 
 To determine the `ppm`, a deeper analysis of the dataset is needed. It is
 clarified above that `ppm` depends on the instrument, but users should not
@@ -727,16 +738,18 @@ necessarily input the vendor-advertised ppm. Here's how to determine it as
 accurately as possible:
 
 The following steps involve generating a highly restricted MS area with a single
-mass per spectrum, representing the Cystine ion. These peaks are then extracted,
-and the absolute value between them is calculated and expressed in ppm.
+mass peak per spectrum, representing the cystine ion. The *m/z* of these peaks
+is then extracted, their absolute difference calculated and finally expressed in
+ppm.
 
 ```{r ppm parameter1 }
-#' Restrict the data to signal from Cystine
+#' Restrict the data to signal from cystine in the first sample
 cst <- data[1L] |>
   spectra() |>
   filterRt(rt = c(208, 218)) |>
   filterMzRange(mz = fData(eic_cystine)["cystine_13C_15N", c("mzmin", "mzmax")])
 
+#' Show the number of peaks per m/z filtered spectra
 lengths(cst)
 
 #' Calculate the difference in m/z values between scans
@@ -746,35 +759,44 @@ mz_diff <- cst |>
     diff() |>
     abs()
 
-#' Express it in ppm
+#' Express differences in ppm
 range(mz_diff * 1e6 / mean(unlist(mz(cst))))
 ```
 
-Therefore, choose a ppm value close to the maximum within this range.
+We therefore, choose a value close to the maximum within this range for
+parameter `ppm`.
 
-Now, rerun the process with the adapted settings. Users should also bear in mind
-that for the peak-finding function to function correctly in a specific area, the
-retention time range needs to be sufficiently wide. If the function fails to
-find a peak in an Extracted Ion Chromatogram (EIC), the initial troubleshooting
-step should be to increase this range. Also, the signal-to-noise threshold
-`snthresh` should in general be reduced for peak detection in EICs, because
-within the small retention time range usually not enough signal is present to
-properly estimate the background noise.
+Now, we perform the chromatographic peak detection process with the adapted
+settings on our EICs. It is important to note that, to properly estimate
+background noise, sufficient data points outside the chromatographic peak need
+to be present. This is generally no problem if peak detection is performed on
+the full LC-MS data set, but for peak detection on EICs the retention time range
+of the EIC needs to be sufficiently wide. If the function fails to find a peak
+in an EIC, the initial troubleshooting step should be to increase this
+range. Also, the signal-to-noise threshold `snthresh` should in general be
+reduced for peak detection in EICs, because within the small retention time
+range usually not enough signal is present to properly estimate the background
+noise. Finally, setting CentWave's advanced parameter `extendLengthMSW` to
+`TRUE` can help if chromatographic peak detection fails despite choosing
+apparently correct settings. [jo: maybe drop or reformulate that last sentence?]
 
 ```{r}
 #' Parameters adapted for chromatographic peak detection on EICs.
 param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2,
                        snthresh = 2)
 
+#' Evaluate on the cystine ion
 cystine_test <- findChromPeaks(eic_cystine, param = param)
 chromPeaks(cystine_test)
 
+#' Evaluate on the methionine ion
 met_test <- findChromPeaks(eic_met, param = param)
 chromPeaks(met_test)
 ```
 
-Wit the costumized parameter, a chromatographic peak was thus detected in each
-sample. Below, we will `plot()` to visualize these results.
+With the customized parameters, a chromatographic peak was detected in each
+sample. Below, we use the `plot()` function on the EICs to visualize these
+results.
 
 ```{r echo=FALSE}
 #' Plot test chromatogram
@@ -794,9 +816,15 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, bty = "n")
 ```
 
-These EICs seems to indicate that our settings are suitable for this dataset.
-We can proceed to apply this algorithm to the entire dataset, and then extract
-the EICs for our two test ions to confirm that the process has been successful.
+Our custom settings seem thus to be suitable for our dataset. We now proceed and
+apply them to the entire dataset, extracting EICs again for the same ions to
+evaluate and confirm that chromatographic peak detection worked as
+expected. Note that we change the value for parameter `snthresh` to its default,
+because, as mentioned above, background noise estimation is more reliable when
+performed on the full data set. Parameter `chunkSize` of `findChromPeaks()`
+defines the number of data files that are loaded into memory and processed
+simultaneously. This parameter thus allows to fine-tune the memory demand as
+well as performance of the chromatographic peak detection step.
 
 ```{r run find chrompeak on entire dataset}
 #' Using the same settings, but with default snthresh
@@ -811,8 +839,8 @@ eic_is <- chromatogram(data,
 fData(eic_is) <- fData(eics_is_noprocess)
 ```
 
-Note that this time we used the default `snthresh` value. This is because the
-signal-to-noise ratio is calculated based on the entire dataset here.
+Below we plot the EICs of the two selected internal standards to evaluate the
+chromatographic peak detection results.
 
 ```{r plot new eics, echo=FALSE}
 #' Test if we find peaks for Cystine and Methionine again
@@ -836,6 +864,7 @@ legend("topright", col = col_phenotype,
 
 Peaks seems to have been detected properly in all samples for both ions. This
 indicates that the peak detection process was successful.
+
 
 ### Refine chromatographic peaks
 
@@ -1209,7 +1238,7 @@ NOTE: i would like to maybe not base the alignment on the QC samples. As it is
 actually making the ions test worse.
 
 Once the different chromatographic peaks have been aligned, we can proceed to the
-next step in the data pre-processing pipeline, correspondence.
+next step in the data preprocessing pipeline, correspondence.
 
 ## Correspondence
 
@@ -1460,7 +1489,7 @@ The linear regression line has a slope of `r round(coef(l)[2], 2)` and an
 intercept of `r round(coef(l)[1], 2)`. This indicates that the filled-in signal
 is on average `r round(coef(l)[2], 2)` times higher than the detected signal.
 
-## Pre-processing result
+## preprocessing result
 
 The final results of these steps are stored within the *XcmsExperiment* object.
 This includes the identified chromatographic peaks, the alignment results, as
@@ -1474,11 +1503,11 @@ can be extracted with the `processHistory()` function:
 processHistory(data)[1]
 ```
 
-These pre-processing steps result in a two-dimensional matrix with abundances of
+These preprocessing steps result in a two-dimensional matrix with abundances of
 the so-called LC-MS features in all samples. At this stage, the features are
 only characterized by their m/z and retention time.
 
-Now, let's extract the results of the pre-processing:
+Now, let's extract the results of the preprocessing:
 
 ```{r}
 #' Extract results as a SummarizedExperiment
@@ -1492,7 +1521,7 @@ assayNames(res)
 ```
 
 We now have a *SummarizedExperiment* object that contains the results of the
-pre-processing steps. The object contains the feature definitions, the feature
+preprocessing steps. The object contains the feature definitions, the feature
 values, and the sample information. The feature definitions are stored as a
 *DataFrame* and can be subsetted by row or column easily:
 
