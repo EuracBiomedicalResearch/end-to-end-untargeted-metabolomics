@@ -1298,28 +1298,21 @@ samples was slightly reduced by the alignment.
 ## Correspondence
 
 We briefly touched on the subject of correspondence before to determine anchor
-peaks, but it is an actual step in the preprocessing of LC-MS data. Its goal is
-to identify chromatographic peaks that originate from the same types of ions,
-which are then grouped and referred to as LC-MS *features*.
-(A visual representation similar to Johannes's drawing would be informative to
-illustrate what features are —consider creating one using BioRender.)
-
-The function `groupChromPeaks()` can take two groups of parameters:
-
-- `NearestPeakParam`: Similar method to initial correspondence from mzMine, as
-it groups the peaks based on proximity from different samples in the
-m/z-retention time interface.
-
-- `PeakDensityParam`: This grouping is based on the density of chromatographic
-peaks from different samples along the retention time dimension within slices of
-small m/z ranges. Essentially, peaks that have a similar retention time will
-result in a higher peak density at a specific retention time and are thus
-grouped together.
-
-Here, we will use the `PeakDensityParam` method that was employed for grouping
-before retention time alignment steps. To emphasize again the importance of
-adapting the function parameters to the user dataset, we will show you the
-results of using the default parameters for correspondence.
+peaks. Generally, the goal of the correspondence analysis is to identify
+chromatographic peaks that originate from the same types of ions in all samples
+of an experiment and to group them into LC-MS *features*. In *xcms*, this step
+can be performed with the `groupChromPeaks()` function and one of the
+correspondence algorithms that can be selected and configured with their
+respective parameter object. In this example, we use the *PeakDensity* method
+[[smith_xcms:_2006]], that was already described in the previous section. Next
+to the `binSize` and `ppm` parameters, proper configuration of parameter `bw` is
+crucial. Here we illustrate how sensible choices for this parameter's value can
+be made. We use below the `plotChromPeakDensity()` function to *simulate* a
+correspondence analysis with the default values for *PeakGroups* on the
+extracted ion chromatograms of our two selected isotope labeled ions. This plot
+shows the EIC in the top panel, and the apex position of chromatographic peaks
+in the different samples (y-axis), along retention time (x-axis) in the lower
+panel.
 
 ```{r}
 #' Default parameter for the grouping and apply them to the test ions BPC
@@ -1331,6 +1324,9 @@ plotChromPeakDensity(
     peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
     peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
     peakPch = 16)
+```
+
+```{r}
 plotChromPeakDensity(eic_met, param = param,
     col = paste0(col_sample, "80"),
     peakCol = col_sample[chromPeaks(eic_met)[, "sample"]],
@@ -1339,24 +1335,16 @@ plotChromPeakDensity(eic_met, param = param,
 ```
 
 For this method, it's crucial to understand that grouping depends on the
-smoothness of the density curve and can be configured with the parameter `bw`.
-As seen above, the smoothness is too high to properly group our features. When
-looking at the default parameters, we can observe that indeed, the `bw`
-parameter is set to `bw = 30`. To accommodate the multiple peaks present in our
-L-Methionine EIC, we need to reduce this parameter. Let's see what happens when
-lowered to `bw = 2`.
-
-Another parameter of note is `ppm`. In essence for this method the `binSize`
-parameter is used to define the size of the overlapping slices in the m/z
-dimension. The `ppm` value is then added to that as m/z increase and allows to
-adjust for m/z drift. For TOF instrument we advise to set up a value `ppm` > 0.
-In our case we will set it up at `ppm = 10`.
+smoothness of the density curve (shown as a black line in the lower panel of the
+plot) that can be configured with the parameter `bw`.  As seen above, the
+smoothness is too high to properly group our features. When looking at the
+default parameters, we can observe that indeed, the `bw` parameter is set to `bw
+= 30`, which is too high for modern UHPLC-MS setups. We reduce the value of this
+parameter to 1.8 and evaluate its impact.
 
 ```{r}
 #' Updating parameters
-param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
-                          minFraction = 0.75, binSize = 0.01, ppm = 10,
-                          bw = 1.8)
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 1.8)
 
 plotChromPeakDensity(
     eic_cystine, param = param,
@@ -1372,20 +1360,38 @@ plotChromPeakDensity(eic_met, param = param,
 ```
 
 We can observe that the peaks are now grouped more accurately into a single
-feature for each test ion. We can now apply this method to the entire dataset.
+feature for each test ion. The other important parameters are `binSize` and
+`ppm` which allow to configure the required similarity of *m/z* values of the
+chromatographic peaks to consider them for grouping. Our data was generated on a
+high resolution MS instrument and we thus select a low value for
+`binSize`. Also, for TOF instruments it is suggested to use a value for `ppm`
+that is larger than 0 to accommodate the higher measurement error of the
+instrument for larger *m/z* values. Finally, we set `minFraction = 0.75` hence
+defining features only if in at least 75% of samples of one of the sample groups
+a chromatographic peak was identified. For sample groups we use the information
+available in our `sampleData`'` `"phenotype"` column.
 
 ```{r}
+#' Define the settings for the.
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+                          minFraction = 0.75, binSize = 0.01, ppm = 10,
+                          bw = 1.8)
+
 #' Apply to whole data
 data <- groupChromPeaks(data, param = param)
 ```
 
-Test appropriate grouping by examining an area isomer of L-Methionine.
+After correspondence analysis it is suggested to evaluate the results again for
+selected EICs. Below we extract signal for an *m/z* similar to that of the
+isotope labeled methionine for a larger retention time range. Importantly, to
+show the actual correspondence results, we set `simulate = FALSE` for the
+`plotChromPeakDensity()` function.
 
 ```{r}
-#' Extract chromatogram with signal for L-Methionine isomers
+#' Extract chromatogram for an m/z similar to the one of the labeled methionine
 chr_test <- chromatogram(data,
                          mz = as.matrix(intern_standard["methionine_13C_15N",
-                                              c("mzmin", "mzmax")]),
+                                                        c("mzmin", "mzmax")]),
                          rt = c(145, 200),
                          aggregationFun = "max")
 plotChromPeakDensity(
@@ -1396,13 +1402,14 @@ plotChromPeakDensity(
     peakPch = 16)
 ```
 
-The two isomers are now grouped into separate features. This is a good sign that
-the correspondence step was successful. We can now proceed to the next step in
-the data preprocessing pipeline, gap filling.
+Indeed, signal from the two different ions were now grouped into separate
+features. Generally, correspondence results should be evaluated on more such
+extracted chromatograms.
 
-The resulting `XcmsExperiment` object now has defined features and can be
-explored further. Below, we will show how to extract the feature definitions and
-values from the object.
+The results from the correspondence analysis are now stored, along with the
+results from the other preprocessing steps, within our `XcmsExperiment` result
+object. The correspondence results, i.e., the definition of the LC-MS features,
+can be extracted using the `featureDefinitions()` function.
 
 ```{r}
 #' Definition of the features
@@ -1410,17 +1417,24 @@ featureDefinitions(data) |>
   head()
 ```
 
-We therefore have `r nrow(featureDefinitions(data))` features defined in our
-dataset. Let's also look at the feature values:
+This data frame provides the average *m/z* and retention time (in columns
+`"mzmed"` and `"rtmed"`) that characterize a LC-MS feature. Column, `"peakidx"`
+contains the indices of all chromatographic peaks that were assigned to that
+feature. The actual abundances for these features, which represent also the
+final preprocessing results, can be extracted with the `featureValues()`
+function:
 
 ```{r}
+#' Extract feature abundances
 featureValues(data, method = "sum") |>
-  head()
+    head()
 ```
 
 We can note that some features (e.g. F00003 and F00006) have missing values in
-some samples. This is expected to a certain degree as not all features are
-present in all samples. We will address this in the next step.
+some samples. This is expected to a certain degree as not in all samples
+features, respectively their ions, need to be present. We will address this in
+the next section.
+
 
 ## Gap filling
 
