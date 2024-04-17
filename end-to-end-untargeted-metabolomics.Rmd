@@ -135,6 +135,7 @@ library(Biobase)
 library(MetaboAnnotation)
 library(ggfortify)
 library(matrixStats) # summaries over matrices
+library(SummarizedExperiment)
 ```
 
 # Data import
@@ -1439,25 +1440,26 @@ the next section.
 ## Gap filling
 
 The previously observed missing values (*NA*) could be attributed to various
-reasons. Even if they represent a genuinely missing value, indicating that a
-feature is truly not present in this dataset subset, it could also be a result
-of a failure in the preceding preprocessing steps to identify a peak. It is
+reasons. Even if they represent a genuinely missing value, indicating that an
+ion (feature) is truly not present in a particular sample, it could also be a
+result of a failure in the preceding chromatographic peak detection step. It is
 crucial to be able to recover missing values of the latter category as much as
-possible. Let's examine how prevalent missing values are in our present dataset:
+possible to reduce the eventual need for data imputation. We next examine how
+prevalent missing values are in our present dataset:
 
 ```{r}
-#' Number of missing values
-sum(is.na(featureValues(data)))
+#' Percentage of missing values
+sum(is.na(featureValues(data))) /
+    length(featureValues(data)) * 100
 ```
 
-We can observe a substantial number of *NA* values in our dataset.
+We can observe a substantial number of missing values values in our dataset.
 
-Now, let's delve into the process of *gap-filling*. We'll walk through the
-steps of rescuing some (pre-)selected peaks that are only detected in a subset
-of samples.
+Now, let's delve into the process of *gap-filling*. We first evaluate some
+example features for which a chromatographic peak was only detected in some
+samples:
 
-```{r peaks found in a few QC not all, echo=FALSE}
-#' Updated code.
+```{r}
 ftidx <- which(is.na(rowSums(featureValues(data))))
 fts <- rownames(featureDefinitions(data))[ftidx]
 farea <- featureArea(data, features = fts[1:2])
@@ -1468,23 +1470,33 @@ chromatogram(data[c(2, 3)],
     plot(col = c("red", "blue"), lwd = 2)
 ```
 
-Examples of features for which a peak was only identified in one sample, this
-can be due to too low/too noisy signal. To rescue these signals, we will use
-the `fillChromPeaks()` function and `ChromPeakAreaParam` which configure this
-algorithm.
+In both instances, a chromatographic peak was only identified in one of the two
+selected samples (red line), which no peak was detected in the blue labeled
+sample and hence a missing value is reported for this feature in that particular
+samples. Also, in both cases, signal was measured in both samples, thus,
+reporting a missing values would not be correct in this case. The signal for
+this feature is, particularly in the blue labeled sample, is very low and
+sketchy. That is also the most likely reason peak detection failed. To rescue
+signal in such cases, the `fillChromPeaks()` function can be used with the
+`ChromPeakAreaParam` approach. This method defines for each feature, based on
+the detected peaks, the *m/z* - retention time area in which signal for the
+respective ion is expected, and integrates, in samples with missing values for
+that feature, all intensities within the area. This is then reported as feature
+abundance. Below we apply this method using the default parameters.
 
 ```{r}
 #' Fill in the missing values in the whole dataset
 data <- fillChromPeaks(data, param = ChromPeakAreaParam(), chunkSize = 5)
 
-#' How many missing values after
-sum(is.na(featureValues(data)))
+#' Percentage of missing values after gap-filling
+sum(is.na(featureValues(data))) /
+    length(featureValues(data)) * 100
 ```
 
-With `fillChromPeaks` we could thus rescue signal for all but
-`r sum(is.na(featureValues(data)))` features.
-
-Let's look at our previously missing values again:
+With `fillChromPeaks()` we could thus rescue most of the missing data in the
+data set. Note that, even if in a sample no ion would be present, in the worst
+case noise would be integrated, which is expected to be much lower than actual
+chromatographic peak signal. Let's look at our previously missing values again:
 
 ```{r echo=FALSE}
 #' Extract EICs again and plot them
@@ -1494,8 +1506,9 @@ chromatogram(data[c(2, 3)],
     plot(col = c("red", "blue"), lwd = 2)
 ```
 
-We can observe that the missing values have been filled in. This is a good
-indication that the gap-filling process was successful.
+After gap-filling, also in the blue colored sample a chromatographic peak is
+present and its peak area would be reported as feature abundance for that
+sample.
 
 To further assess the effectiveness of the gap-filling method for rescuing
 signals, we can also plot the average of features with at least one missing
@@ -1505,11 +1518,12 @@ be used.
 
 For this, we extract:
 
-- The detected features value: Set `filled = FALSE` in the `featuresValues`
-input.
+- Feature values from detected chromatographic peaks by setting `filled = FALSE`
+  in the `featuresValues()` call.
 
-- The filled-in signal: For this, we first extract both detected and filled-in
-together, and then we will replace the detected values with `NA`.
+- The filled-in signal by first extracting both detected and gap-filled
+  abundances and then replace the values for detected chromatographic peaks with
+  `NA`.
 
 Then, we calculate the row averages of both of these matrices and plot them
 against each other.
@@ -1527,15 +1541,11 @@ vals_filled[!is.na(vals_detect)] <- NA
 #' Identify features with at least one filled peak
 has_filled <- is.na(rowSums(vals_detect))
 
-#' Calculate row averages
-avg_detect <- rowMeans(vals_detect, na.rm = TRUE)
-avg_filled <- rowMeans(vals_filled, na.rm = TRUE)
+#' Calculate row averages for features with missing values
+avg_detect <- rowMeans(vals_detect[has_filled, ], na.rm = TRUE)
+avg_filled <- rowMeans(vals_filled[has_filled, ], na.rm = TRUE)
 
-#' Restrict to features with at least one filled peak
-avg_detect <- avg_detect[has_filled]
-avg_filled <- avg_filled[has_filled]
-
-#' plot the values against each other (in log2 scale)
+#' Plot the values against each other (in log2 scale)
 plot(log2(avg_detect), log2(avg_filled),
      xlim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
      ylim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
@@ -1545,8 +1555,10 @@ abline(0, 1)
 
 ```
 
-Then calculate statistics on these values. below we fit a linear regression
-line to the data and summarize its results
+The detected (x-axis) and gap-filled (y-axis) values for QC samples are highly
+correlated. Especially for higher abundances, the agreement is very high, while
+for low intensities, as can be expected, differences are higher. Below we in
+addition fit a linear regression line to the data and summarize its results
 
 ```{r}
 #' fit a linear regression line to the data
@@ -1558,30 +1570,71 @@ The linear regression line has a slope of `r round(coef(l)[2], 2)` and an
 intercept of `r round(coef(l)[1], 2)`. This indicates that the filled-in signal
 is on average `r round(coef(l)[2], 2)` times higher than the detected signal.
 
-## preprocessing result
 
-The final results of these steps are stored within the *XcmsExperiment* object.
-This includes the identified chromatographic peaks, the alignment results, as
-well as the correspondence results. In addition, to guarantee reproducibility,
-this result object keeps track of all performed processing steps and contains
-the individual parameter objects used in the various preprocessing steps. These
-can be extracted with the `processHistory()` function:
+## Preprocessing result
+
+The final results of the LC-MS data preprocessing are stored within the
+`XcmsExperiment` object. This includes the identified chromatographic peaks, the
+alignment results, as well as the correspondence results. In addition, to
+guarantee reproducibility, this result object keeps track of all performed
+processing steps, including the individual parameter objects used to configure
+these. The `processHistory()` function returns a list of the various applied
+processing steps in chronological order. Below we extract the information for
+the first step of the performed preprocessing.
 
 ```{r Process history}
 #' Check first step of the process history
-processHistory(data)[1]
+processHistory(data)[[1]]
 ```
 
-These preprocessing steps result in a two-dimensional matrix with abundances of
-the so-called LC-MS features in all samples. At this stage, the features are
-only characterized by their m/z and retention time.
+The `processParam()` function could then be used to extract the actual parameter
+class used to configure this processing step.
 
-Now, let's extract the results of the preprocessing:
+The final result of the whole LC-MS data preprocessing would be a
+two-dimensional matrix with abundances of the so-called LC-MS features in all
+samples. Note that at this stage of the analysis features are only characterized
+by their *m/z* and retention time and we don't have yet any information which
+metabolite a feature could represent.
+
+As we have seen before, such feature matrix could be extracted with the
+`featureValues()` function and the corresponding feature characteristics (i.e.,
+their *m/z* and retention time values) using the `featureDefinitions()`
+function. Thus, these two arrays could be extracted from the *xcms* result
+object and used/imported in other analysis packages for further processing.
+They could for example also be exported to tab delimited text files, and used in
+an external tool, or used, if also MS2 spectra would be available for
+feature-based molecular networking in the GNPS analysis environment
+[@nothias_feature-based_2020] (see also the [GNPS
+documentation](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/)
+for more information).
+
+For further processing in R, if no reference or link to the raw MS data is
+required, it is however suggested to extract the *xcms* preprocessing result
+using the `quantify()` function as a `SummarizedExperiment` object,
+Bioconductor's default container for data from biological
+assays/experiments. This simplifies integration with other Bioconductor analysis
+packages. The `quantify()` function takes the same parameters than the
+`featureValues()` function, thus, with the call below we extract a
+`SummarizedExperiment` with only the detected, but not gap-filled, feature
+abundances:
 
 ```{r}
 #' Extract results as a SummarizedExperiment
-library(SummarizedExperiment)
 res <- quantify(data, method = "sum", filled = FALSE)
+res
+
+```
+
+Sample annotations from the *xcms* result's `sampleData()` are now available as
+`colData()` (column, sample annotations) and the `featureDefinitions()` as
+`rowData()` (row, feature annotations). The feature values have been added as
+the first `assay()` in the `SummarizedExperiment` and even the processing
+history is available in the object's `metadata()`. A `SummarizedExperiment`
+supports multiple assays, all being numeric matrices with the same
+dimensions. Below we thus add the detected and gap-filled feature abundances as
+an additional assay to the `SummarizedExperiment`.
+
+```{r}
 assays(res)$raw_filled <- featureValues(data, method = "sum",
                                         filled = TRUE )
 
@@ -1589,31 +1642,29 @@ assays(res)$raw_filled <- featureValues(data, method = "sum",
 assayNames(res)
 ```
 
-We now have a *SummarizedExperiment* object that contains the results of the
-preprocessing steps. The object contains the feature definitions, the feature
-values, and the sample information. The feature definitions are stored as a
-*DataFrame* and can be subsetted by row or column easily:
+Feature abundances can be extracted with the `assay()` function. Below we
+extract the first 6 lines of the detected and gap-filled feature abundances:
 
 ```{r}
-#' Subset to the first 15 features
-res[1:15, ]
+assay(res, "raw_filled") |> head()
 ```
 
-The features values are stored as an *assay* within the object and can be
-accessed using the `assay()` function:
+An advantage, in addition to being a container for the full preprocessing
+results is also the possibility of an easy and intuitive creation of data
+subsets ensuring data integrity. It would for example be very easy to subset the
+full data to a selection of features and/or samples:
 
 ```{r}
-#' Get feature values
-assay(res) |> head()
+res[1:14, 3:8]
 ```
 
-The *XcmsExperiment* object can be saved for later use. The possible export
-formats are .RData, a folder of plain text files that can be used in other
-software, such as...
-For this purpose, the function `storeResults()` can be utilized, with different
-parameter objects depending on the desired export format. Here, .RData is used.
-Saving the dataset object is particularly beneficial for implementation during
-preprocessing steps to parallelize processes.
+The `XcmsExperiment` object can also be saved for later use using the
+`storeResults()` function. The data can be exported in different formats, to
+enable also easier integration with non-R-based software. Currently, it is
+possible to export the data in R-specific *RData* format or as (separate) plain
+text files. Export to the community developed open mzTab-M format is currently
+being developed and will be supported in future. Below we export the *xcms*
+result object with R's default binary format for object serialization.
 
 ```{r}
 #' Save `XcmsExperiment` object
@@ -1621,10 +1672,8 @@ storeResults(data, RDataParam(fileName = "data.RData"))
 
 #' Save `SummarizedExperiment` object
 save(res, file = "SumExp.RData")
-
-#' CHeck files present locally
-list.files()
 ```
+
 
 # Data normalization
 
