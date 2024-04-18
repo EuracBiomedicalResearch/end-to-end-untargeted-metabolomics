@@ -11,6 +11,7 @@ author:
     affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
 output: html_document
 date: "2023-09-07"
+bibliography: references.bib
 ---
 
 ```{r style, warning=FALSE, include=FALSE, results='hide'}
@@ -133,6 +134,8 @@ library(pheatmap)
 library(Biobase)
 library(MetaboAnnotation)
 library(ggfortify)
+library(matrixStats) # summaries over matrices
+library(SummarizedExperiment)
 ```
 
 # Data import
@@ -657,34 +660,40 @@ arises from the artificial labeling. This shift allows us to discriminate
 between the endogenous and non-endogenous compound.
 
 
-# Data pre-processing
+# Data preprocessing
 
-Pre-processing stands as the inaugural step in the analysis of untargeted LC-MS
-or gas chromatography (GC)-MS data. The primary objective of pre-processing is
+Preprocessing stands as the inaugural step in the analysis of untargeted LC-MS
+or gas chromatography (GC)-MS data. The primary objective of preprocessing is
 the quantification of signals from ions measured in a sample, addressing any
 potential retention time drifts between samples, and ensuring alignment of
-quantified signals across samples within an experiment.
+quantified signals across samples within an experiment. The final result of
+LC-MS data preprocessing is a numeric matrix with abundances of quantified
+entities in the samples of the experiment.
 
 ## Chromatographic peak detection
 
-The initial pre-processing step involves detecting the presence of peaks along
-the retention time axis. To achieve this, we employ the `findChromPeaks` function
-within *xcms*. This function supports various algorithms for peak detection, with
-notable options including:
+The initial preprocessing step involves detecting of intensity peaks along the
+retention time axis, the so called *chromatographic peaks*. To achieve this, we
+employ the `findChromPeaks()` function within *xcms*. This function supports
+various algorithms for peak detection, which can be selected and configured with
+their respective parameter objects, with notable options including:
 
 - `MatchedFilterParam`: Implements peak detection as described in the original
-  xcms article (C. A. Smith et al. 2006).
+  xcms article [@smith_xcms:_2006].
 
 - `CentWaveParam`: Utilizes continuous wavelet transformation (CWT)-based peak
-  detection (Tautenhahn, Böttcher, and Neumann 2008).
+  detection [@tautenhahn_highly_2008].
 
 - `MassifquantParam`: Employs a Kalman filter-based peak detection
-  (Conley et al. 2014).
+  [@conley_massifquant:_2014].
 
 The preferred algorithm, in this case, is *CentWave*, known for its
 effectiveness in handling non-Gaussian shaped chromatographic peaks or peaks
 with different retention time widths, commonly encountered in HILIC
 separation.
+
+Below we apply the CentWave algorithm with its default settings on the extracted
+ion chromatogram for cystine and methionine ions and evaluate its results.
 
 ```{r Default centwave param test}
 #' Use default Centwave parameter
@@ -702,24 +711,28 @@ chromPeaks(met_test)
 While *CentWave* is a highly performant algorithm, it necessitates adaptation to
 each dataset. This implies that the parameters should be fine-tuned based on the
 user's data. The example above serves as a clear motivation for users to
-familiarize themselves with the various parameters. We will discuss the main
-parameters that can be easily adjusted to suit the user's dataset:
-
-- `ppm`: Typically dependent on the precision of the instrument.
+familiarize themselves with the various parameters and the need to adapt them to
+a data set. We will discuss the main parameters that can be easily adjusted to
+suit the user's dataset:
 
 - `peakwidth`: Specifies the minimal and maximal expected width of the peaks in
-the retention time dimension. Highly dependent on the LC-MS system that
-generated the dataset.
+  the retention time dimension. Highly dependent on the chromatographic settings
+  used.
+
+- `ppm`: The maximal allowed difference of mass peaks' *m/z* values (in
+  parts-per-million) in consecutive scans to consider them representing signal
+  from the same ion.
 
 - `integrate`: This parameter defines the integration method. Here, we primarily
-use `integrate = 2` because it is more suitable for Gaussian-shaped data and is
-considered more accurate by the developers.
+  use `integrate = 2` because it integrates also signal of a chromatographic
+  peak's tail and is considered more accurate by the developers.
 
 To determine `peakwidth`, we recommend that users refer to previous EICs and
-estimate the range of peakwidth they observe in their dataset. Ideally,
-examining multiple EICs should be the goal. For this dataset, the peakwidths
-are observed to be around 2 and 10 seconds. We do not advise on going too wide
-or too narrow with the peakwidth as it can lead to false positives or negatives.
+estimate the range of peak widths they observe in their dataset. Ideally,
+examining multiple EICs should be the goal. For this dataset, the peak widths
+appear to be around 2 to 10 seconds. We do not advise on going too wide
+or too narrow with the `peakwidth` parameter as it can lead to false positives
+or negatives.
 
 To determine the `ppm`, a deeper analysis of the dataset is needed. It is
 clarified above that `ppm` depends on the instrument, but users should not
@@ -727,16 +740,18 @@ necessarily input the vendor-advertised ppm. Here's how to determine it as
 accurately as possible:
 
 The following steps involve generating a highly restricted MS area with a single
-mass per spectrum, representing the Cystine ion. These peaks are then extracted,
-and the absolute value between them is calculated and expressed in ppm.
+mass peak per spectrum, representing the cystine ion. The *m/z* of these peaks
+is then extracted, their absolute difference calculated and finally expressed in
+ppm.
 
 ```{r ppm parameter1 }
-#' Restrict the data to signal from Cystine
+#' Restrict the data to signal from cystine in the first sample
 cst <- data[1L] |>
   spectra() |>
   filterRt(rt = c(208, 218)) |>
   filterMzRange(mz = fData(eic_cystine)["cystine_13C_15N", c("mzmin", "mzmax")])
 
+#' Show the number of peaks per m/z filtered spectra
 lengths(cst)
 
 #' Calculate the difference in m/z values between scans
@@ -746,35 +761,44 @@ mz_diff <- cst |>
     diff() |>
     abs()
 
-#' Express it in ppm
+#' Express differences in ppm
 range(mz_diff * 1e6 / mean(unlist(mz(cst))))
 ```
 
-Therefore, choose a ppm value close to the maximum within this range.
+We therefore, choose a value close to the maximum within this range for
+parameter `ppm`.
 
-Now, rerun the process with the adapted settings. Users should also bear in mind
-that for the peak-finding function to function correctly in a specific area, the
-retention time range needs to be sufficiently wide. If the function fails to
-find a peak in an Extracted Ion Chromatogram (EIC), the initial troubleshooting
-step should be to increase this range. Also, the signal-to-noise threshold
-`snthresh` should in general be reduced for peak detection in EICs, because
-within the small retention time range usually not enough signal is present to
-properly estimate the background noise.
+Now, we perform the chromatographic peak detection process with the adapted
+settings on our EICs. It is important to note that, to properly estimate
+background noise, sufficient data points outside the chromatographic peak need
+to be present. This is generally no problem if peak detection is performed on
+the full LC-MS data set, but for peak detection on EICs the retention time range
+of the EIC needs to be sufficiently wide. If the function fails to find a peak
+in an EIC, the initial troubleshooting step should be to increase this
+range. Also, the signal-to-noise threshold `snthresh` should in general be
+reduced for peak detection in EICs, because within the small retention time
+range usually not enough signal is present to properly estimate the background
+noise. Finally, setting CentWave's advanced parameter `extendLengthMSW` to
+`TRUE` can help if chromatographic peak detection fails despite choosing
+apparently correct settings. [jo: maybe drop or reformulate that last sentence?]
 
 ```{r}
 #' Parameters adapted for chromatographic peak detection on EICs.
 param <- CentWaveParam(peakwidth = c(1, 8), ppm = 15, integrate = 2,
                        snthresh = 2)
 
+#' Evaluate on the cystine ion
 cystine_test <- findChromPeaks(eic_cystine, param = param)
 chromPeaks(cystine_test)
 
+#' Evaluate on the methionine ion
 met_test <- findChromPeaks(eic_met, param = param)
 chromPeaks(met_test)
 ```
 
-Wit the costumized parameter, a chromatographic peak was thus detected in each
-sample. Below, we will `plot()` to visualize these results.
+With the customized parameters, a chromatographic peak was detected in each
+sample. Below, we use the `plot()` function on the EICs to visualize these
+results.
 
 ```{r echo=FALSE}
 #' Plot test chromatogram
@@ -794,9 +818,15 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, bty = "n")
 ```
 
-These EICs seems to indicate that our settings are suitable for this dataset.
-We can proceed to apply this algorithm to the entire dataset, and then extract
-the EICs for our two test ions to confirm that the process has been successful.
+Our custom settings seem thus to be suitable for our dataset. We now proceed and
+apply them to the entire dataset, extracting EICs again for the same ions to
+evaluate and confirm that chromatographic peak detection worked as
+expected. Note that we change the value for parameter `snthresh` to its default,
+because, as mentioned above, background noise estimation is more reliable when
+performed on the full data set. Parameter `chunkSize` of `findChromPeaks()`
+defines the number of data files that are loaded into memory and processed
+simultaneously. This parameter thus allows to fine-tune the memory demand as
+well as performance of the chromatographic peak detection step.
 
 ```{r run find chrompeak on entire dataset}
 #' Using the same settings, but with default snthresh
@@ -811,8 +841,8 @@ eic_is <- chromatogram(data,
 fData(eic_is) <- fData(eics_is_noprocess)
 ```
 
-Note that this time we used the default `snthresh` value. This is because the
-signal-to-noise ratio is calculated based on the entire dataset here.
+Below we plot the EICs of the two selected internal standards to evaluate the
+chromatographic peak detection results.
 
 ```{r plot new eics, echo=FALSE}
 #' Test if we find peaks for Cystine and Methionine again
@@ -837,16 +867,16 @@ legend("topright", col = col_phenotype,
 Peaks seems to have been detected properly in all samples for both ions. This
 indicates that the peak detection process was successful.
 
-### Refine chromatographic peaks
+
+### Refine identified chromatographic peaks
 
 The identification of chromatographic peaks using the *CentWave* algorithm can
 sometimes result in artifacts, such as overlapping or split peaks. To address
 this issue, the `refineChromPeaks()` function is utilized, in conjunction with
-the `MergeNeighboringPeaksParam.` This function is designed to merge peaks that
-may have been artificially split in the previous step.
+the `MergeNeighboringPeaksParam`, which aims at merging such split peaks.
 
-Here are a few examples of peak detection artifacts. These examples are
-pre-selected to illustrate the necessity of the next step:
+Below we show some examples of *CentWave* peak detection artifacts. These
+examples are pre-selected to illustrate the necessity of the next step:
 
 ```{r echo=FALSE}
 #' Extract m/z-rt regions for selected peaks
@@ -862,23 +892,24 @@ eics <- chromatogram(data[3], rt = mz_rt[, c("rtmin", "rtmax")],
 plot(eics)
 ```
 
-To address these artifacts, we need to configure parameters for the
-`refineChromPeaks` function:
+In both cases the signal presumably from a single type of ion was split into two
+separate chromatographic peaks (indicated by the vertical line). The
+`MergeNeigboringPeaksParam` allows to combine such split peaks. The parameters
+for this algorithm are `expandMz`, `expandRt` and `minProp`. `expandMz` and
+`expandRt` define which chromatographic peaks should be evaluated for merging
+and `minProp` is used to determine whether candidates are actually merged:
+chromatographic peaks with overlapping *m/z* ranges (expanded on each side by
+`expandMz`) and with a distance tail to head in retention time dimension that is
+less than `2 * expandRt` and for which the signal between them is higher than
+`minProp` of the apex intensity of the chromatographic peak with the lower
+intensity are merged.
 
-- `expandRt =`: Expansion on each side of the peak in the retention time
-  dimension.
-- `minProp =`: Chromatographic peaks with a distance tail to head in the
-  retention time dimension that is less than `2 * expandRt` and for which the
-  intensity between them is higher than minProp of the lower (apex) intensity of
-  the two peaks are merged.
-- `expandMz =`: Expansion on each side of the peak in the m/z dimension.
-
-`expandRt` is usually set to approximately half the size of the average range
-set up for peak detection, in this case 2.5 seconds. Additionally, `expandMz` is
-kept relatively small (here at 0.0015) to prevent the merging of isotopes. It's
-important to note that `minProp` should not be set too low, and we advise
-against going below the default value of 0.75 to avoid merging neighboring peaks
-that should remain separate.
+Parameter `expandRt` is usually set to approximately half the size of the
+average retention time width used for chromatographic peak detection (in this
+case 2.5 seconds). Parameter `expandMz` is suggested to be kept relatively small
+(here at 0.0015) to prevent the merging of isotopes. Also, values for `minProp`
+should not be too small to avoid merging of closely co-eluting ions such as
+isomers. We test these settings below on the EICs with the split peaks.
 
 ```{r test merging}
 #' set up the parameter
@@ -891,7 +922,10 @@ plot(eics)
 ```
 
 We can observe that the artificially split peaks have been appropriately merged.
-Therefore, we can apply this process to our entire dataset once again.
+Therefore, we next apply these settings to the entire dataset. After peak
+merging, column `"merged"` in the result object's `chromPeakData()` data frame
+can be used to evaluate which chromatographic peaks in the result represent
+signal from merged, or from the originally identified chromatographic peaks.
 
 ```{r}
 #' Apply on whole dataset
@@ -900,9 +934,10 @@ chromPeakData(data)$merged |>
                       table()
 ```
 
-Now that this step has been performed we can update our internal standard EICs
-object. We advise to look at all the EICs to assess the success of the peak
-detection and merging. Before moving on to the retention time alignment step.
+Before proceeding with the next preprocessing step it is generally suggested to
+evaluate the results of the chromatographic peak detection on EICs of
+e.g. internal standards or other compounds/ions known to be present in the
+samples.
 
 ```{r}
 eics_is_chrompeaks <- eic_is
@@ -916,9 +951,43 @@ eic_cystine <- eic_is["cystine_13C_15N", ]
 eic_met <- eic_is["methionine_13C_15N", ]
 ```
 
+Also evaluating and comparing the number of identified chromatographic peaks in
+all samples of a data set can help spotting potentially problematic
+samples. Below we count the number of chromatographic peaks per sample and show
+these numbers in a table.
+
+```{r, results = "asis"}
+#' Count the number of peaks per sample and summarize them in a table.
+data.frame(sample_name = sampleData(data)$sample_name,
+           peak_count = as.integer(table(chromPeaks(data)[, "sample"]))) |>
+    pandoc.table(
+        style = "rmarkdown",
+        caption = "Samples and number of identified chromatographic peaks.")
+```
+
+About the same number of chromatographic peaks was identified in the various
+samples of the data set.
+
+There would be additional options to evaluate chromatographic peak detection
+results from visualizations such as those created with `plotChromPeaks()` to
+summaries that could be easily generated with base R commands.
+
+
 ## Retention time alignment
 
-We will select for QC samples and observe the BPC again:
+[jo: I rewrote/reformulated most of the text here - I hope it's clear and
+understandable. I tried to formulate it for analysts without any pre-knowledge
+of xcms or LC-MS data analysis, also focusing more on the algorithms we use here
+instead of mentioning what else would be available.]
+
+Despite using the same chromatographic settings and conditions there will always
+be shifts in retention times between samples from an experiment. These will be
+generally small if samples are measured within the same batch/measurement run,
+but can be considerable if data of an experiment was acquired across a longer
+time period.
+
+Below we extract base peak chromatograms from the study's QC samples and plot
+them.
 
 ```{r echo=FALSE}
 #' Get QC samples
@@ -927,65 +996,66 @@ QC_samples <- sampleData(data)$phenotype == "QC"
 #' extract BPC
 data[QC_samples] |>
     chromatogram(aggregationFun = "max", chromPeaks = "none") |>
-    plot(col = "blue", main = "BPC of QC samples") |>
+    plot(col = col_phenotype["QC"], main = "BPC of QC samples") |>
     grid()
 ```
 
-Here, we can observe slight drifts in the signals of the QC samples especially
-between 100 and 150s on the retention time axis. These samples which were
-measured with the same setup on the same day. This occurrence is common and
-highly dependent on the LC setup and protocol used during data acquisition. To
-facilitate proper post-processing analysis and the identification of features,
-it is essential to minimize these differences in retention times between
-samples.
+These QC samples representing the same sample (pool) were measured at regular
+intervals during the measurement run of the experiment and were all measured on
+the same day. Still, small shifts can be observed, especially between 100 and
+150 seconds. To facilitate proper correspondence of signals across samples (and
+hence definition of the LC-MS features), it is essential to minimize these
+differences in retention times.
 
-The function utilized here is `adjustRtime()`, and similar to the previous peak
-detection step, multiple algorithms are supported:
+[jo: would maybe not discuss the different available algorithms, but just focus
+on the method used here. Info on the other algorithms would be available in the
+xcms tutorial and vignette.]
 
-- `PeakGroupsParam`: This method is based on the retention time of a set of
-anchor peaks in different samples, representing signals from ions across the
-entire dataset.
+In *xcms* retention time alignment can be performed using the `adjustRtime()`
+function and one of the available alignments algorithms that can be selected and
+configured using the respective parameter object. For this example we use the
+*PeakGroups* method [@smith_xcms:_2006] that performs the alignment by
+minimizing differences in retention times of a set of *anchor peaks* in the
+different samples. This method requires an initial correspondence analysis to
+match/group chromatographic peaks across samples from which the algorithm then
+selects the anchor peaks for the alignment.
 
-- `ObiwarpParam`: This method is based on correlation-optimized warping.
-The `binSize =` parameter signifies that the function creates warping functions
-in mz bins of the size desired by the user.
+For the initial correspondence, we use the *PeakDensity* approach
+[smith_xcms:_2006] that groups chromatographic peaks with similar *m/z* and
+retention time into LC-MS features. An LC-MS feature, or in short feature,
+represents signal from the same type of ion across all samples of a data
+set. The parameters for this algorithm, that can be configured using the
+`PeakDensityParam` object, are `sampleGroups`, `minFraction`, `binSize`, `ppm`
+and `bw`. `binSize`, `ppm` and `bw` allow to specify how similar the
+chromatographic peaks' *m/z* and retention time values need to be to consider
+them for grouping into a feature. Here `binSize` and `ppm` define the required
+similarity of *m/z* values. Within each *m/z* bin (defined by `binSize` and
+`ppm`) areas along the retention time axis with a high chromatographic peak
+density (considering all peaks in all samples) are identified, and
+chromatographic peaks within these regions are considered for grouping into a
+feature. High density areas are identified using the base R `density()`
+function, for which `bw` is a parameter: higher values define wider retention
+time areas, lower values require chromatographic peaks to have more similar
+retention times. Whether such candidate peaks get grouped into a feature depends
+also on parameters `sampleGroups` and `minFraction`: `sampleGroups` should
+provide, for each sample, the sample group it belongs to, and `minFraction` is
+expected to be a value between 0 and 1 defining the proportion of samples within
+at least one of the sample groups (defined with `sampleGroups`) in which a
+chromatographic peaks was detected to group them into a feature.
 
-For this example, we will use the *PeakGroups* method. As explained, we first
-need group chromatographic peaks across samples in an initial correspondence
-analysis using e.g. the `PeakDensityParam` method. This correspondence step will
-also be used later to define all the features of our dataset.
-
-We therefore use the `PeakDensityParam` algorithm with the following parameters
-(which do not need to be optimized yet):
-
-- `sampleGroups =` Specify the sample group to which each sample belongs.
-
-- `minFraction =` Set the proportion of samples in one group for which a
-chromatographic peak is identified. If `minFraction = 1`, a chromatographic
-peak needs to be present in 100% of the samples to be defined as a feature.
-
-- `binSize =` Define the size of the overlapping slices in the m/z
-  dimension. Values between 0.01 and 0.1 might be acceptable and depend on the
-  precision of the MS instrument. This parameter defines the acceptable
-  difference in m/z values for chromatographic peaks of the same ion in
-  different samples.
-
-- `bw =` Define the bandwidth.
-
-In non-test datasets, we recommend choosing a `minFraction` between 0.5 and 0.8.
-`binSize` is highly dependent on the machine and should be neither too big nor
-too small. Testing different values and observing change in alignment can help
-determine it.
-
-The `bw` parameter defines the smoothness of the curve to determine a peak, the
-default for this parameter (30) is not acceptable for short (UHP) LCs, we
-therefore  advise to choose a much lower value. Either by trial or by visual
-confirmation as it will be described in detail in the next step. It is
-important to note that the user should not have really strict and optimized
-parameter for this initial correspondence as the alignment is not corrected.
+For the initial correspondence, parameters don't need to be fully
+optimized. Selection of data set-specific parameter values is described in more
+detail in the following section. For our data set, we use small values for
+`binSize` and `ppm` and, importantly, also for parameter `bw`, since for our
+data set an ultra high performance (UHP) LC setup was used. For `minFraction` we
+use a high value (0.9) to ensure only features are defined for chromatographic
+peaks present in almost all samples of one sample group (which can then be used
+as anchor peaks for the actual alignment). We will base the alignment later on
+QC samples only and hence define for `sampleGroups` a binary variable grouping
+samples either into a study, or QC group.
 
 ```{r}
-# Quick correspondence step
+# Initial correspondence analysis
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype == "QC",
                           minFraction = 0.9,
                           binSize = 0.01, ppm = 10,
@@ -993,56 +1063,68 @@ param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype == "QC",
 data <- groupChromPeaks(data, param = param)
 ```
 
-The next step enables us to determine anchor peaks for the retention alignment
-process. Which we will then input into the alignment function `adjustRtime()`.
-The parameters for this function are:
+*PeakGroups*-based alignment can next be performed using the `adjustRtime()`
+function with a `PeakGroupsParam` parameter object. The parameters for this
+algorithm are:
 
--`minFraction =` This has the same definition as above, but here the peaks will
-be evaluate on the overall dataset not by groups (phenotype) as in the previous
-function.
+- `subsetAdjust` and `subset`: Allows for subset alignment. Here we base the
+  retention alignment on the QC samples, i.e., retention time shifts will be
+  estimated based on these repeatedly measured samples. The resulting adjustment
+  is then applied to the entire data. For data sets in which QC samples
+  (e.g. sample pools) are measured repeatedly, we strongly suggest to use this
+  method. Note also that for subset-based alignment the samples should be
+  ordered by injection index (i.e., in the order in which they were measured
+  during the measurement run).
 
--`span =` This input defines the degree of smoothing by the *LOESS* function.
-This smoothing allows for regions along the retention time axis to be adjusted.
-`span` is advised to be set up around 0.4 and 0.6 to avoid overfitting or
-underfitting. Again, it is suggested to use these values and eventually adapt if
-the results from the alignment step are not satisfactory.
+- `minFraction`: a value between 0 and 1 defining the proportion of samples (of
+  the full data set, or the data subset defined with `subset`) in which a
+  chromatographic peak had to be identified to use it as *anchor peak*. This is
+  in contrast to the `PeakDensityParam` where this parameter was used to define
+  a proportion within a sample group.
 
-- `subsetAdjust` and `subset` Allows for subset alignment. Here we base the
-retention alignment on the QC samples, i.e., retention time shifts will be
-estimated based on these repeatedly measured samples. The resulting
-adjustment is then applied to the entire data. For data sets in which QC samples
-(e.g. sample pools) are measured repeatedly, we strongly suggest to use this
-method. Note also that for subset-based alignment the samples should be ordered
-by injection index (i.e. in the order in which they were measured during the
-measurement run).
+- `span`: The *PeakGroups* method allows, depending on the data,
+  to adjust regions along the retention time axis differently. To enable such
+  local alignments the *LOESS* function is used and this parameter defines the
+  degree of smoothing of this function. Generally, values between 0.4 and 0.6
+  are used, however, it is suggested to evaluate alignment results and
+  eventually adapt parameters if the result was not satisfactory.
 
-- jo: also mention that alignment will benefit from a large number of anchor
-  peaks along the full retention time range. QC (pool) samples repeatedly
-  measured along the MS run are ideal because the same ions are expected to be
-  present and hence more anchor peaks are likely to be defined.
+Below we perform the alignment of our data set based on retention times of
+anchor peaks defined in the subset of QC samples. QC samples, e.g. a pool of the
+study samples, repeatedly measured within an experiment are ideal for alignment,
+because the same ions are expected to be quantified in all of them enabling
+easier and more reliable definition of anchor peaks. Despite having external QCs
+in our data set, we still use the subset-based alignment assuming retention time
+shifts to be independent of the different sample matrix (human serum or plasma).
 
 ```{r}
 #' Define parameters of choice
-#' phili: do we keep the subset based alignment ?
 subset <- which(sampleData(data)$phenotype == "QC")
 param <- PeakGroupsParam(minFraction = 0.9, extraPeaks = 50, span = 0.5,
                          subsetAdjust = "average",
                          subset = subset)
 
-#' Input in the function
+#' Perform the alignment
 data <- adjustRtime(data, param = param)
 ```
 
+Alignment adjusted the retention times of all spectra in the data set, as well
+as the retention times of all identified chromatographic peaks. Note that it
+would also be possible to manually specify anchor peaks, respectively their
+retention times or to align a data set against an external, reference, data
+set. More information is provided in the vignettes of the `r Biocpkg("xcms")`
+package.
+
 Once the alignment has been performed, the user should evaluate the results
-using the `plotAdjustedRtime()` function. This function allows us to visualize
-the difference between adjusted and raw retention time for each sample on the
-y-axis along the adjusted retention time on the x-axis. Dot points represent the
-position of each anchor peak along the retention time axis. For optimal
-alignment, these anchor peaks should be scattered all over the retention time
-dimension, and the adjustment should not be too extreme.
+using the `plotAdjustedRtime()` function. This function visualizes the
+difference between adjusted and raw retention time for each sample on the y-axis
+along the adjusted retention time on the x-axis. Dot points represent the
+position of the used anchor peak along the retention time axis. For optimal
+alignment in all areas along the retention time axis, these anchor peaks should
+be scattered all over the retention time dimension.
 
 ```{r}
-#' See retention time variation
+#' Visualize alignment results
 plotAdjustedRtime(data, col = paste0(col_sample, 80), peakGroupsPch = 1)
 grid()
 legend("topright", col = col_phenotype,
@@ -1052,87 +1134,24 @@ legend("topright", col = col_phenotype,
 All samples from the present data set were measured within the same measurement
 run, thus only small retention time shifts were present. Therefore, only little
 adjustments needed to be performed (shifts of at maximum 1 second as can be seen
-in the plot above).
+in the plot above). Generally, the magnitude of adjustment seen in such plots
+should match the expectation from the analyst.
 
-We can also compare before and after alignment. To access data before the
-process, the function `dropAdjustedRtime()` can be used:
+We can also compare the BPC before and after alignment. To get the original
+data, i.e. the raw retention times, we can use the `dropAdjustedRtime()`
+function:
 
 ```{r}
-#' Get  data before alignment
+#' Get data before alignment
 data_raw <- dropAdjustedRtime(data)
 
 #' Apply the adjusted retention time to our dataset
 data <- applyAdjustedRtime(data)
 ```
 
-We can use this to compare the BPC before and after alignment. First we will check how  well the data gor centered to the anchor peaks:
-
-```{r}
-#' Prepare results
-final_table <- matrix(
-    ncol = length(data),
-    nrow = nrow(intern_standard),
-    dimnames = list(c(row.names(intern_standard)), c(1:length(data)))
-)
-
-#' Extract chrompeak data
-chrom_mtch <- as.data.frame(chromPeaks(data))
-chrom_mtch$id <- rownames(chrom_mtch)
-
-param <- SingleMatchParam(duplicates = "closest", column = "target_maxo",
-                          decreasing = TRUE)
-
-for (i in unique(chrom_mtch$sample)){
-    tmp <- chrom_mtch[chrom_mtch[,"sample"]== i, ]
-    if(sampleData(data)$phenotype[i] != "QC") {
-        match_intern_standard <- matchValues(
-            query = intern_standard,
-            target = tmp,
-            mzColname = c("mz", "mz"),
-            rtColname = c("RT", "rt"),
-            param = MzRtParam(ppm = 50, toleranceRt = 10))
-    match_intern_standard <- filterMatches(match_intern_standard, param)
-    final_table[, i] <- match_intern_standard$target_id
-    }
-}
-
-#' if need to use only the pool
-index <- sampleData(data)$phenotype != "QC"
-ID_table <- final_table[, index]
-
-rtdf <- function(data, ID_table) {
-    indices <- as.vector(ID_table)
-    cp <- as.data.frame(chromPeaks(data))
-    cp$id <- rownames(cp)
-    x <- cp[indices, "rt"]
-    dim(x) <- dim(ID_table)
-    rownames(x) <- rownames(ID_table)
-    colnames(x) <- colnames(ID_table)
-    x
-}
-
-RT_raw <- rtdf(data_raw, ID_table)
-RT_adj <- rtdf(data, ID_table)
-
-
-library(MatrixGenerics) # Need it for rowSds, i thought some other package loaded it..
-Sdsdf <- data.frame(
-    Raw = rowSds(RT_raw, na.rm = TRUE),
-    Adj = rowSds(RT_adj, na.rm = TRUE)
-)
-
-pandoc.table(Sdsdf, style = "rmarkdown")
-boxplot(Sdsdf, outline = FALSE, xlab = "standard eviation of internal standard RT standard in study sample")
-```
-phili: Want to keep that ? Should we just have normal alignment and show subset
-based in the annex with the standard deviation evaluation.
-
-
-We can also look at the changes in the EICs for our test ions:
-
 ```{r bpc before and after1}
 #' Plot the BPC before and after alignment
-par(mfrow = c(2,1), mar = c(2, 1, 1, 0.5))
+par(mfrow = c(2, 1), mar = c(2, 1, 1, 0.5))
 chromatogram(data_raw, aggregationFun = "max", chromPeaks = "none") |>
     plot(main = "BPC before alignment", col = paste0(col_sample, 80))
 grid()
@@ -1150,8 +1169,9 @@ legend("topright", col = col_phenotype,
 The largest shift can be observed in the retention time range from 120 to 130s.
 Apart from that retention time range, only little changes can be observed.
 
-We can now update our internal standard EICs object with the adjusted retention
-time and subsequently extract the EICs for our test ions.
+We next evaluate the impact of the alignment on the EICs of the selected
+internal standards. We thus below first extract the ion chromatograms after
+alignment.
 
 ```{r}
 #' Store the EICs before alignment
@@ -1169,10 +1189,10 @@ eic_met <- eic_is["methionine_13C_15N"]
 ```
 
 We can now evaluate the alignment effect in our test ions. We will plot the EICs
-before and after alignment for both Cystine and Methionine.
+before and after alignment for both the isotope labeled cystine and methionine.
 
 ```{r specific ion before and after1}
-par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
+par(mfrow = c(2, 2), mar = c(4, 4.5, 2, 1))
 
 old_eic_cystine <- eics_is_refined["cystine_13C_15N"]
 plot(old_eic_cystine, main = "Cystine before alignment", peakType = "none",
@@ -1180,24 +1200,18 @@ plot(old_eic_cystine, main = "Cystine before alignment", peakType = "none",
 grid()
 abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
 
+old_eic_met <- eics_is_refined["methionine_13C_15N"]
+plot(old_eic_met, main = "Methionine before alignment",
+     peakType = "none", col = paste0(col_sample, 80))
+grid()
+abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
+
 plot(eic_cystine, main = "Cystine after alignment", peakType = "none",
      col = paste0(col_sample, 80))
 grid()
 abline(v = intern_standard["cystine_13C_15N", "RT"], col = "red", lty = 3)
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, bty = "n")
-```
-
-The non_endogenous cystine ion was already well aligned so the difference is
-minimal. The methionine ion, however, shows a clear improvement in alignment:
-
-```{r echo=FALSE}
-par(mfrow = c(1, 2), mar = c(4, 4.5, 2, 1))
-old_eic_met <- eics_is_refined["methionine_13C_15N"]
-plot(old_eic_met, main = "Methionine before alignment",
-     peakType = "none", col = paste0(col_sample, 80))
-grid()
-abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 
 plot(eic_met, main = "Methionine after alignment",
      peakType = "none", col = paste0(col_sample, 80))
@@ -1205,37 +1219,101 @@ grid()
 abline(v = intern_standard["methionine_13C_15N", "RT"], col = "red", lty = 3)
 ```
 
-NOTE: i would like to maybe not base the alignment on the QC samples. As it is
-actually making the ions test worse.
+The non_endogenous cystine ion was already well aligned so the difference is
+minimal. The methionine ion, however, shows an improvement in alignment.
 
-Once the different chromatographic peaks have been aligned, we can proceed to the
-next step in the data pre-processing pipeline, correspondence.
+In addition to a visual inspection of the results, we next also evaluate the
+impact of the alignment by comparing the variance in retention times for
+internal standards before and after alignment. To this end we need to first
+identify chromatographic peaks in each sample with an *m/z* and retention time
+close to the expected values for each internal standard. For this we use the
+`matchValues()` function from the `r Biocpkg("MetaboAnnotation")` package using
+the `MzRtParam` method to identify all chromatographic peaks with similar *m/z*
+(+/- 50ppm) and retention time (+/- 10 seconds) to the internal standard's
+values. We perform this matching separate for each sample and select for each
+internal standard, in each sample, using the `filterMatches()` and
+`SingleMatchParam`, the chromatographic peak with the highest intensity.
+
+```{r}
+#' Extract the matrix with all chromatographic peaks and add a column
+#' with the ID of the chromatographic peak
+chrom_peaks <- chromPeaks(data) |> as.data.frame()
+chrom_peaks$peak_id <- rownames(chrom_peaks)
+
+#' Define the parameters for the matching and filtering of the matches
+p_1 <- MzRtParam(ppm = 50, toleranceRt = 10)
+p_2 <- SingleMatchParam(duplicates = "top_ranked", column = "target_maxo",
+                        decreasing = TRUE)
+
+#' Iterate over samples and identify for each the chromatographic peaks
+#' with similar m/z and retention time than the onse from the internal
+#' standard, and extract among them the ID of the peaks with the
+#' highest intensity.
+intern_standard_peaks <- lapply(seq_along(data), function(i) {
+    tmp <- chrom_peaks[chrom_peaks[, "sample"] == i, , drop = FALSE]
+    mtch <- matchValues(intern_standard, tmp,
+                        mzColname = c("mz", "mz"),
+                        rtColname = c("RT", "rt"),
+                        param = p_1)
+    mtch <- filterMatches(mtch, p_2)
+    mtch$target_peak_id
+}) |>
+    do.call(what = cbind)
+
+```
+
+We have now for each internal standard the ID of the chromatographic peak in
+each sample that most likely represents signal from that ion. We can now extract
+the retention times for these chromatographic peaks before and after alignment.
+
+```{r}
+#' Define the index of the selected chromatographic peaks in the
+#' full chromPeaks matrix
+idx <- match(intern_standard_peaks, rownames(chromPeaks(data)))
+
+#' Extract the raw retention times for these
+rt_raw <- chromPeaks(data_raw)[idx, "rt"] |>
+    matrix(ncol = length(data_raw))
+
+#' Extract the adjusted retention times for these
+rt_adj <- chromPeaks(data)[idx, "rt"] |>
+    matrix(ncol = length(data_raw))
+
+```
+
+We can now evaluate the impact of the alignment on the retention times of
+internal standards across the full data set
+
+```{r}
+list(all_raw = rowSds(rt_raw, na.rm = TRUE),
+     all_adj = rowSds(rt_adj, na.rm = TRUE)
+     ) |>
+    vioplot(ylab = "sd(retention time)")
+grid()
+```
+
+On average, the variation in retention times of internal standards across
+samples was slightly reduced by the alignment.
+
 
 ## Correspondence
 
 We briefly touched on the subject of correspondence before to determine anchor
-peaks, but it is an actual step in the preprocessing of LC-MS data. Its goal is
-to identify chromatographic peaks that originate from the same types of ions,
-which are then grouped and referred to as LC-MS *features*.
-(A visual representation similar to Johannes's drawing would be informative to
-illustrate what features are —consider creating one using BioRender.)
-
-The function `groupChromPeaks()` can take two groups of parameters:
-
-- `NearestPeakParam`: Similar method to initial correspondence from mzMine, as
-it groups the peaks based on proximity from different samples in the
-m/z-retention time interface.
-
-- `PeakDensityParam`: This grouping is based on the density of chromatographic
-peaks from different samples along the retention time dimension within slices of
-small m/z ranges. Essentially, peaks that have a similar retention time will
-result in a higher peak density at a specific retention time and are thus
-grouped together.
-
-Here, we will use the `PeakDensityParam` method that was employed for grouping
-before retention time alignment steps. To emphasize again the importance of
-adapting the function parameters to the user dataset, we will show you the
-results of using the default parameters for correspondence.
+peaks. Generally, the goal of the correspondence analysis is to identify
+chromatographic peaks that originate from the same types of ions in all samples
+of an experiment and to group them into LC-MS *features*. In *xcms*, this step
+can be performed with the `groupChromPeaks()` function and one of the
+correspondence algorithms that can be selected and configured with their
+respective parameter object. In this example, we use the *PeakDensity* method
+[[smith_xcms:_2006]], that was already described in the previous section. Next
+to the `binSize` and `ppm` parameters, proper configuration of parameter `bw` is
+crucial. Here we illustrate how sensible choices for this parameter's value can
+be made. We use below the `plotChromPeakDensity()` function to *simulate* a
+correspondence analysis with the default values for *PeakGroups* on the
+extracted ion chromatograms of our two selected isotope labeled ions. This plot
+shows the EIC in the top panel, and the apex position of chromatographic peaks
+in the different samples (y-axis), along retention time (x-axis) in the lower
+panel.
 
 ```{r}
 #' Default parameter for the grouping and apply them to the test ions BPC
@@ -1247,6 +1325,9 @@ plotChromPeakDensity(
     peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
     peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
     peakPch = 16)
+```
+
+```{r}
 plotChromPeakDensity(eic_met, param = param,
     col = paste0(col_sample, "80"),
     peakCol = col_sample[chromPeaks(eic_met)[, "sample"]],
@@ -1255,24 +1336,16 @@ plotChromPeakDensity(eic_met, param = param,
 ```
 
 For this method, it's crucial to understand that grouping depends on the
-smoothness of the density curve and can be configured with the parameter `bw`.
-As seen above, the smoothness is too high to properly group our features. When
-looking at the default parameters, we can observe that indeed, the `bw`
-parameter is set to `bw = 30`. To accommodate the multiple peaks present in our
-L-Methionine EIC, we need to reduce this parameter. Let's see what happens when
-lowered to `bw = 2`.
-
-Another parameter of note is `ppm`. In essence for this method the `binSize`
-parameter is used to define the size of the overlapping slices in the m/z
-dimension. The `ppm` value is then added to that as m/z increase and allows to
-adjust for m/z drift. For TOF instrument we advise to set up a value `ppm` > 0.
-In our case we will set it up at `ppm = 10`.
+smoothness of the density curve (shown as a black line in the lower panel of the
+plot) that can be configured with the parameter `bw`.  As seen above, the
+smoothness is too high to properly group our features. When looking at the
+default parameters, we can observe that indeed, the `bw` parameter is set to `bw
+= 30`, which is too high for modern UHPLC-MS setups. We reduce the value of this
+parameter to 1.8 and evaluate its impact.
 
 ```{r}
 #' Updating parameters
-param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
-                          minFraction = 0.75, binSize = 0.01, ppm = 10,
-                          bw = 1.8)
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 1.8)
 
 plotChromPeakDensity(
     eic_cystine, param = param,
@@ -1288,20 +1361,38 @@ plotChromPeakDensity(eic_met, param = param,
 ```
 
 We can observe that the peaks are now grouped more accurately into a single
-feature for each test ion. We can now apply this method to the entire dataset.
+feature for each test ion. The other important parameters are `binSize` and
+`ppm` which allow to configure the required similarity of *m/z* values of the
+chromatographic peaks to consider them for grouping. Our data was generated on a
+high resolution MS instrument and we thus select a low value for
+`binSize`. Also, for TOF instruments it is suggested to use a value for `ppm`
+that is larger than 0 to accommodate the higher measurement error of the
+instrument for larger *m/z* values. Finally, we set `minFraction = 0.75` hence
+defining features only if in at least 75% of samples of one of the sample groups
+a chromatographic peak was identified. For sample groups we use the information
+available in our `sampleData`'` `"phenotype"` column.
 
 ```{r}
+#' Define the settings for the.
+param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
+                          minFraction = 0.75, binSize = 0.01, ppm = 10,
+                          bw = 1.8)
+
 #' Apply to whole data
 data <- groupChromPeaks(data, param = param)
 ```
 
-Test appropriate grouping by examining an area isomer of L-Methionine.
+After correspondence analysis it is suggested to evaluate the results again for
+selected EICs. Below we extract signal for an *m/z* similar to that of the
+isotope labeled methionine for a larger retention time range. Importantly, to
+show the actual correspondence results, we set `simulate = FALSE` for the
+`plotChromPeakDensity()` function.
 
 ```{r}
-#' Extract chromatogram with signal for L-Methionine isomers
+#' Extract chromatogram for an m/z similar to the one of the labeled methionine
 chr_test <- chromatogram(data,
                          mz = as.matrix(intern_standard["methionine_13C_15N",
-                                              c("mzmin", "mzmax")]),
+                                                        c("mzmin", "mzmax")]),
                          rt = c(145, 200),
                          aggregationFun = "max")
 plotChromPeakDensity(
@@ -1312,13 +1403,14 @@ plotChromPeakDensity(
     peakPch = 16)
 ```
 
-The two isomers are now grouped into separate features. This is a good sign that
-the correspondence step was successful. We can now proceed to the next step in
-the data preprocessing pipeline, gap filling.
+Indeed, signal from the two different ions were now grouped into separate
+features. Generally, correspondence results should be evaluated on more such
+extracted chromatograms.
 
-The resulting `XcmsExperiment` object now has defined features and can be
-explored further. Below, we will show how to extract the feature definitions and
-values from the object.
+The results from the correspondence analysis are now stored, along with the
+results from the other preprocessing steps, within our `XcmsExperiment` result
+object. The correspondence results, i.e., the definition of the LC-MS features,
+can be extracted using the `featureDefinitions()` function.
 
 ```{r}
 #' Definition of the features
@@ -1326,40 +1418,48 @@ featureDefinitions(data) |>
   head()
 ```
 
-We therefore have `r nrow(featureDefinitions(data))` features defined in our
-dataset. Let's also look at the feature values:
+This data frame provides the average *m/z* and retention time (in columns
+`"mzmed"` and `"rtmed"`) that characterize a LC-MS feature. Column, `"peakidx"`
+contains the indices of all chromatographic peaks that were assigned to that
+feature. The actual abundances for these features, which represent also the
+final preprocessing results, can be extracted with the `featureValues()`
+function:
 
 ```{r}
+#' Extract feature abundances
 featureValues(data, method = "sum") |>
-  head()
+    head()
 ```
 
 We can note that some features (e.g. F00003 and F00006) have missing values in
-some samples. This is expected to a certain degree as not all features are
-present in all samples. We will address this in the next step.
+some samples. This is expected to a certain degree as not in all samples
+features, respectively their ions, need to be present. We will address this in
+the next section.
+
 
 ## Gap filling
 
 The previously observed missing values (*NA*) could be attributed to various
-reasons. Even if they represent a genuinely missing value, indicating that a
-feature is truly not present in this dataset subset, it could also be a result
-of a failure in the preceding preprocessing steps to identify a peak. It is
+reasons. Even if they represent a genuinely missing value, indicating that an
+ion (feature) is truly not present in a particular sample, it could also be a
+result of a failure in the preceding chromatographic peak detection step. It is
 crucial to be able to recover missing values of the latter category as much as
-possible. Let's examine how prevalent missing values are in our present dataset:
+possible to reduce the eventual need for data imputation. We next examine how
+prevalent missing values are in our present dataset:
 
 ```{r}
-#' Number of missing values
-sum(is.na(featureValues(data)))
+#' Percentage of missing values
+sum(is.na(featureValues(data))) /
+    length(featureValues(data)) * 100
 ```
 
-We can observe a substantial number of *NA* values in our dataset.
+We can observe a substantial number of missing values values in our dataset.
 
-Now, let's delve into the process of *gap-filling*. We'll walk through the
-steps of rescuing some (pre-)selected peaks that are only detected in a subset
-of samples.
+Now, let's delve into the process of *gap-filling*. We first evaluate some
+example features for which a chromatographic peak was only detected in some
+samples:
 
-```{r peaks found in a few QC not all, echo=FALSE}
-#' Updated code.
+```{r}
 ftidx <- which(is.na(rowSums(featureValues(data))))
 fts <- rownames(featureDefinitions(data))[ftidx]
 farea <- featureArea(data, features = fts[1:2])
@@ -1370,23 +1470,33 @@ chromatogram(data[c(2, 3)],
     plot(col = c("red", "blue"), lwd = 2)
 ```
 
-Examples of features for which a peak was only identified in one sample, this
-can be due to too low/too noisy signal. To rescue these signals, we will use
-the `fillChromPeaks()` function and `ChromPeakAreaParam` which configure this
-algorithm.
+In both instances, a chromatographic peak was only identified in one of the two
+selected samples (red line), which no peak was detected in the blue labeled
+sample and hence a missing value is reported for this feature in that particular
+samples. Also, in both cases, signal was measured in both samples, thus,
+reporting a missing values would not be correct in this case. The signal for
+this feature is, particularly in the blue labeled sample, is very low and
+sketchy. That is also the most likely reason peak detection failed. To rescue
+signal in such cases, the `fillChromPeaks()` function can be used with the
+`ChromPeakAreaParam` approach. This method defines for each feature, based on
+the detected peaks, the *m/z* - retention time area in which signal for the
+respective ion is expected, and integrates, in samples with missing values for
+that feature, all intensities within the area. This is then reported as feature
+abundance. Below we apply this method using the default parameters.
 
 ```{r}
 #' Fill in the missing values in the whole dataset
 data <- fillChromPeaks(data, param = ChromPeakAreaParam(), chunkSize = 5)
 
-#' How many missing values after
-sum(is.na(featureValues(data)))
+#' Percentage of missing values after gap-filling
+sum(is.na(featureValues(data))) /
+    length(featureValues(data)) * 100
 ```
 
-With `fillChromPeaks` we could thus rescue signal for all but
-`r sum(is.na(featureValues(data)))` features.
-
-Let's look at our previously missing values again:
+With `fillChromPeaks()` we could thus rescue most of the missing data in the
+data set. Note that, even if in a sample no ion would be present, in the worst
+case noise would be integrated, which is expected to be much lower than actual
+chromatographic peak signal. Let's look at our previously missing values again:
 
 ```{r echo=FALSE}
 #' Extract EICs again and plot them
@@ -1396,8 +1506,9 @@ chromatogram(data[c(2, 3)],
     plot(col = c("red", "blue"), lwd = 2)
 ```
 
-We can observe that the missing values have been filled in. This is a good
-indication that the gap-filling process was successful.
+After gap-filling, also in the blue colored sample a chromatographic peak is
+present and its peak area would be reported as feature abundance for that
+sample.
 
 To further assess the effectiveness of the gap-filling method for rescuing
 signals, we can also plot the average of features with at least one missing
@@ -1407,11 +1518,12 @@ be used.
 
 For this, we extract:
 
-- The detected features value: Set `filled = FALSE` in the `featuresValues`
-input.
+- Feature values from detected chromatographic peaks by setting `filled = FALSE`
+  in the `featuresValues()` call.
 
-- The filled-in signal: For this, we first extract both detected and filled-in
-together, and then we will replace the detected values with `NA`.
+- The filled-in signal by first extracting both detected and gap-filled
+  abundances and then replace the values for detected chromatographic peaks with
+  `NA`.
 
 Then, we calculate the row averages of both of these matrices and plot them
 against each other.
@@ -1429,15 +1541,11 @@ vals_filled[!is.na(vals_detect)] <- NA
 #' Identify features with at least one filled peak
 has_filled <- is.na(rowSums(vals_detect))
 
-#' Calculate row averages
-avg_detect <- rowMeans(vals_detect, na.rm = TRUE)
-avg_filled <- rowMeans(vals_filled, na.rm = TRUE)
+#' Calculate row averages for features with missing values
+avg_detect <- rowMeans(vals_detect[has_filled, ], na.rm = TRUE)
+avg_filled <- rowMeans(vals_filled[has_filled, ], na.rm = TRUE)
 
-#' Restrict to features with at least one filled peak
-avg_detect <- avg_detect[has_filled]
-avg_filled <- avg_filled[has_filled]
-
-#' plot the values against each other (in log2 scale)
+#' Plot the values against each other (in log2 scale)
 plot(log2(avg_detect), log2(avg_filled),
      xlim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
      ylim = range(log2(c(avg_detect, avg_filled)), na.rm = TRUE),
@@ -1447,8 +1555,10 @@ abline(0, 1)
 
 ```
 
-Then calculate statistics on these values. below we fit a linear regression
-line to the data and summarize its results
+The detected (x-axis) and gap-filled (y-axis) values for QC samples are highly
+correlated. Especially for higher abundances, the agreement is very high, while
+for low intensities, as can be expected, differences are higher. Below we in
+addition fit a linear regression line to the data and summarize its results
 
 ```{r}
 #' fit a linear regression line to the data
@@ -1460,30 +1570,71 @@ The linear regression line has a slope of `r round(coef(l)[2], 2)` and an
 intercept of `r round(coef(l)[1], 2)`. This indicates that the filled-in signal
 is on average `r round(coef(l)[2], 2)` times higher than the detected signal.
 
-## Pre-processing result
 
-The final results of these steps are stored within the *XcmsExperiment* object.
-This includes the identified chromatographic peaks, the alignment results, as
-well as the correspondence results. In addition, to guarantee reproducibility,
-this result object keeps track of all performed processing steps and contains
-the individual parameter objects used in the various preprocessing steps. These
-can be extracted with the `processHistory()` function:
+## Preprocessing result
+
+The final results of the LC-MS data preprocessing are stored within the
+`XcmsExperiment` object. This includes the identified chromatographic peaks, the
+alignment results, as well as the correspondence results. In addition, to
+guarantee reproducibility, this result object keeps track of all performed
+processing steps, including the individual parameter objects used to configure
+these. The `processHistory()` function returns a list of the various applied
+processing steps in chronological order. Below we extract the information for
+the first step of the performed preprocessing.
 
 ```{r Process history}
 #' Check first step of the process history
-processHistory(data)[1]
+processHistory(data)[[1]]
 ```
 
-These pre-processing steps result in a two-dimensional matrix with abundances of
-the so-called LC-MS features in all samples. At this stage, the features are
-only characterized by their m/z and retention time.
+The `processParam()` function could then be used to extract the actual parameter
+class used to configure this processing step.
 
-Now, let's extract the results of the pre-processing:
+The final result of the whole LC-MS data preprocessing would be a
+two-dimensional matrix with abundances of the so-called LC-MS features in all
+samples. Note that at this stage of the analysis features are only characterized
+by their *m/z* and retention time and we don't have yet any information which
+metabolite a feature could represent.
+
+As we have seen before, such feature matrix could be extracted with the
+`featureValues()` function and the corresponding feature characteristics (i.e.,
+their *m/z* and retention time values) using the `featureDefinitions()`
+function. Thus, these two arrays could be extracted from the *xcms* result
+object and used/imported in other analysis packages for further processing.
+They could for example also be exported to tab delimited text files, and used in
+an external tool, or used, if also MS2 spectra would be available for
+feature-based molecular networking in the GNPS analysis environment
+[@nothias_feature-based_2020] (see also the [GNPS
+documentation](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/)
+for more information).
+
+For further processing in R, if no reference or link to the raw MS data is
+required, it is however suggested to extract the *xcms* preprocessing result
+using the `quantify()` function as a `SummarizedExperiment` object,
+Bioconductor's default container for data from biological
+assays/experiments. This simplifies integration with other Bioconductor analysis
+packages. The `quantify()` function takes the same parameters than the
+`featureValues()` function, thus, with the call below we extract a
+`SummarizedExperiment` with only the detected, but not gap-filled, feature
+abundances:
 
 ```{r}
 #' Extract results as a SummarizedExperiment
-library(SummarizedExperiment)
 res <- quantify(data, method = "sum", filled = FALSE)
+res
+
+```
+
+Sample annotations from the *xcms* result's `sampleData()` are now available as
+`colData()` (column, sample annotations) and the `featureDefinitions()` as
+`rowData()` (row, feature annotations). The feature values have been added as
+the first `assay()` in the `SummarizedExperiment` and even the processing
+history is available in the object's `metadata()`. A `SummarizedExperiment`
+supports multiple assays, all being numeric matrices with the same
+dimensions. Below we thus add the detected and gap-filled feature abundances as
+an additional assay to the `SummarizedExperiment`.
+
+```{r}
 assays(res)$raw_filled <- featureValues(data, method = "sum",
                                         filled = TRUE )
 
@@ -1491,31 +1642,29 @@ assays(res)$raw_filled <- featureValues(data, method = "sum",
 assayNames(res)
 ```
 
-We now have a *SummarizedExperiment* object that contains the results of the
-pre-processing steps. The object contains the feature definitions, the feature
-values, and the sample information. The feature definitions are stored as a
-*DataFrame* and can be subsetted by row or column easily:
+Feature abundances can be extracted with the `assay()` function. Below we
+extract the first 6 lines of the detected and gap-filled feature abundances:
 
 ```{r}
-#' Subset to the first 15 features
-res[1:15, ]
+assay(res, "raw_filled") |> head()
 ```
 
-The features values are stored as an *assay* within the object and can be
-accessed using the `assay()` function:
+An advantage, in addition to being a container for the full preprocessing
+results is also the possibility of an easy and intuitive creation of data
+subsets ensuring data integrity. It would for example be very easy to subset the
+full data to a selection of features and/or samples:
 
 ```{r}
-#' Get feature values
-assay(res) |> head()
+res[1:14, 3:8]
 ```
 
-The *XcmsExperiment* object can be saved for later use. The possible export
-formats are .RData, a folder of plain text files that can be used in other
-software, such as...
-For this purpose, the function `storeResults()` can be utilized, with different
-parameter objects depending on the desired export format. Here, .RData is used.
-Saving the dataset object is particularly beneficial for implementation during
-preprocessing steps to parallelize processes.
+The `XcmsExperiment` object can also be saved for later use using the
+`storeResults()` function. The data can be exported in different formats, to
+enable also easier integration with non-R-based software. Currently, it is
+possible to export the data in R-specific *RData* format or as (separate) plain
+text files. Export to the community developed open mzTab-M format is currently
+being developed and will be supported in future. Below we export the *xcms*
+result object with R's default binary format for object serialization.
 
 ```{r}
 #' Save `XcmsExperiment` object
@@ -1523,10 +1672,8 @@ storeResults(data, RDataParam(fileName = "data.RData"))
 
 #' Save `SummarizedExperiment` object
 save(res, file = "SumExp.RData")
-
-#' CHeck files present locally
-list.files()
 ```
+
 
 # Data normalization
 
@@ -2585,7 +2732,19 @@ from results is not always as straightforward as initially perceived.
 
 # Session information
 
+```{r}
+sessionInfo()
+```
+
 # References
+
+# Appendix
+
+## Alignment using manually selected anchor peaks
+
+- align the data set using internal standards.
+- suggested to eventually *enrich* the anchor peaks with signal from other ions
+  in retention time regions not covered by the internal standards.
 
 # Additional informations
 
