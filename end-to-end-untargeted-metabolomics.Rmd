@@ -1681,7 +1681,7 @@ After preprocessing, data normalization or scaling might needed to be applied to
 remove any technical variances from the data. While simple approaches like
 median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
-*preprocessCore*.
+`r Biocpkg("preprocessCore")`.
 
 Unwanted variation can arise from various sources and is highly dependent on the
 experiment. Therefore, data normalization should be chosen carefully based on
@@ -1694,16 +1694,48 @@ processing. Repeated measurements of QC samples (usually a pool of the study
 samples) on the other hand allows to estimate and correct for LC-MS specific
 biases.
 
-jo: different types of noise to account for. Mention between sample differences,
-general signal drifts and batch effects. Here we focus on only between sample
-differences, for large experiments the other two would be more important. Refer
-to the *MetaboCoreUtils* vignette/functionality for adjustment using linear
-models.
+Generally, for LC-MS data, noise can be categorized into 3 main groups:
+
+- Variances introduced by sample collection and initial processing, which can
+  include differences in sample amounts. This type of bias is expected to be
+  sample-specific and affect all signals in a sample in the same way. Methods
+  like median scaling, loess or quantiles normalization can adjust for this
+  bias.
+
+- Signal drifts along measurement of samples from an experiment. Reasons for
+  such drifts can be related to aging of the instrumentation used (columns,
+  detector), but also changes in metabolite abundances/characteristics within
+  the sample, such as oxydation or other modifications of the sample's
+  metabolites which are expected to affect samples measured later in a sample
+  run more than those measured at the beginning. This bias can play a major role
+  in large experiements measured over a long time range and is usually
+  considered to affect individual metabolites (or metabolite groups)
+  differently. For adjustment, moving average or linear regression-based
+  approaches can be used. The latter can for example be performed using the
+  `adjust_lm()` function from the `r Biocpkg("MetaboCoreUtils")` package.
+
+- Batch-related biases. This comprises any noise that is specific to a larger
+  set of samples, which can be the set of samples measured in one LC-MS
+  measurement run (i.e. from one analysis plate) or samples measured using a
+  specific batch of reagents. This noise is assumed to affect all samples in one
+  batch in the same way and linear modeling-based approaches can be used to
+  adjust for this.
+
+Whether or not a specific bias is present in the data or how strong its impact
+on the data is, needs to be evaluated on a data set basis. Proper planning of an
+experiment, such as measurement of study samples in random order, can largely
+avoid biases introduced by most of the above mentioned sources of variance.
+
+In this workflow we present some tools to assess data quality and evaluate need
+for normalization as well options for normalization. For space reasons we do not
+provide solutions to adjust for all possible sources of variation.
+
 
 ## Initial quality assessment
 
 A principal component analysis (PCA) is a very helpful tool for an initial,
-unsupervised, quality assessment. In order to apply a PCA to the measured
+unsupervised, visualization of the data that also provides insights into
+potential quality issues in the data. In order to apply a PCA to the measured
 feature abundances, we need however to impute missing values. We assume that
 most missing values (after the gap-filling step) represent signal which is below
 detection limit. In such cases, missing values can be replaced with random
@@ -1711,6 +1743,8 @@ values from the uniform distribution sampling numbers from half of smallest
 measured value to the smallest measured value for a specific feature. The
 uniform distribution is defined with two parameters (minimum and maximum) and
 all values between them have an equal probability of being selected.
+
+LLLLLL
 
 Below we impute missing values with that approach and add the resulting data
 matrix as a new *assay* to our result object.
