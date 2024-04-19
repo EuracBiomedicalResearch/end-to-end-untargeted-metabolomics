@@ -339,7 +339,7 @@ reduce memory demand and speed up the process.
 
 ```{r}
 #' Setting the chunksize
-chunksize <- 10000
+chunksize <- 1000
 processingChunkSize(spectra(data)) <- chunksize
 ```
 
@@ -410,7 +410,7 @@ plotSpectra(spec2, main = "125th spectrum of one CTR sample")
 There is indeed a significant difference in peak distribution and intensity
 between the QC sample and the CTR sample. This further illustrates the apparent
 difference in signal between the QC and study samples from this data set. We
-next compare also
+next compare also a full MS1 spectrum from a CVD and a CTR sample.
 
 ```{r}
 #' Accessing a single spectrum - comparing CVD and CTR
@@ -441,9 +441,6 @@ rtime(spec2)
 #' Checking its m/z
 mz(spec2)
 ```
-
-[jo: removed this whole part. I don't think it did contribute to the
-comprehension of the data and might be just confusing]
 
 
 ## Chromatographic Data Visualization

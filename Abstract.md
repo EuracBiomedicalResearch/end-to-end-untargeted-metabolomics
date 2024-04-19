@@ -1,15 +1,7 @@
 # Abstract for conferences
 
-Title proposal:
-
-End-to-end workflow for reproducible analysis of LC-MS/MS data in R using
-*xcms* and packages from the *RforMassSpectrometry* initiative.
-
-OR
-
 Streamlining LC-MS/MS Data Analysis in R with Open-Source *xcms* and
 *RforMassSpectrometry*: An End-to-End Workflow
-
 
 Despite untargeted LC-MS/MS data being a powerful approach for large-scale
 metabolomics analysis, a significant challenge in the field lies in the
