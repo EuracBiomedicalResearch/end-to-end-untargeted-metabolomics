@@ -2143,7 +2143,8 @@ After normalizing our data we can now pre-filter to clean the data before
 performing any statistical analysis. In general, pre-filtering of samples and
 features is performed to remove outliers.
 
-Below we make it so as to keep a copy of the unfiltered object.
+Below we copy the original result object to also keep the unfiltered data for
+later comparisons.
 
 ```{r}
 load("SumExp_afternorm.RData")
@@ -2157,31 +2158,33 @@ res_unfilt <- res
 ```
 
 Here we will eliminate features that exhibit high variability in our dataset.
-QC samples typically serve as a robust basis for cleansing  datasets of
-systematic and random errors. However, in our dataset, since our QC pool
-samples consist of other biological samples rather than pools of the samples
-themselves, their utility for filtering is somewhat constrained. For a
-comprehensive understanding of guidelines for data filtering in untargeted
-metabolomic studies, please refer to [insert link to the paper PHILI].
+Repeatedly measured QC samples typically serve as a robust basis for cleansing
+datasets allowing to identify features with excessively high noise. In our data
+set external QC samples were used, i.e. pooled samples from a different
+collection and using a slightly different sample matrix, their utility for
+filtering is somewhat limited. For a comprehensive description and guidelines
+for data filtering in untargeted metabolomic studies, please refer to [@broadhurst_guidelines_2018].
 
 We first restrict the data set to features for which a chromatographic peak was
 detected in at least 2/3 of samples of at least one of the study samples groups.
 This ensures the statistical tests performed later on the study samples being
 performed on *reliable* signal. Also, with this filter we remove features that
 were mostly detected in QC samples, but not the study samples. Such filter can
-be performed with `filterFeatures` and the `PercentMissingFilter`
-setting. Parameter `threshold` of this filter defines the maximal acceptable
-percentage of samples with missing value(s) in at least in one of the sample
-groups defined by parameter `f`. To consider detected chromatographic peaks per
-sample, we apply the filter on the `"raw"` assay of our result object, that
-contains an abundance value only for detected chromatographic peaks (prior
-gap-filling). By replacing the `"QC"` sample group for parameter `f` we consider
-only study samples. With `threshold = 40` we remove features for which no peak
-was identified in 2 out of the 3 samples per sample group.
+be performed with `filterFeatures()` function from the `r Biocpkg("xcms")`
+package with the `PercentMissingFilter` setting. Parameter `threshold` of this
+filter defines the maximal acceptable percentage of samples with missing
+value(s) in at least one of the sample groups defined by parameter `f`. To
+consider detected chromatographic peaks per sample, we apply the filter on the
+`"raw"` assay of our result object, that contains abundance values only for
+detected chromatographic peaks (prior gap-filling). By replacing the `"QC"`
+sample group with `NA` in parameter `f` we exclude the QC samples from the
+evaluation and consider only the study samples. With `threshold = 40` we keep
+only features for which a peak was detected in 2 out of the 3 samples in one of
+the sample groups.
 
 ```{r}
 #' Limit features to those with at least two detected peaks in one study group.
-#' Setting the factor value for QC samples excludes QC samples from the
+#' Setting the value for QC samples to NA excludes QC samples from the
 #' calculation.
 f <- res$phenotype
 f[f == "QC"] <- NA
@@ -2192,31 +2195,42 @@ res <- filterFeatures(res, PercentMissingFilter(f = f, threshold = 40),
 
 Following the guidelines stated above we decided to still use the QC samples
 for pre-filtering, on the basis that they represent similar bio-fluids to our
-study samples, and thus, we anticipate observing relatively similar metabolites.
+study samples, and thus, we anticipate observing relatively similar metabolites
+affected by similar measurement biases.
 
-We therefore evaluate the Dratio for all features in the data set. Using the
+We therefore evaluate the *dispertion ratio* (Dratio) [@broadhurst_guidelines_2018] for all features in the data set. Using the
 same function as above but this time with the `DratioFilter` parameter. More
 filter exist for this function and we invite the user to explore them as to
 decide what is best for their dataset.
 
 ```{r}
-#' COmpute and filter based on the Dratio
+#' Compute and filter based on the Dratio
 filter_dratio <- DratioFilter(threshold = 0.4,
                               qcIndex = res$phenotype == "QC",
                               studyIndex = res$phenotype != "QC",
                               mad = TRUE)
-res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")#
+res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 
 #' Phili: i think you advised that we used the dratio filter only, but i am
 #'struggling to justify it in a proper way below, as we do expect a high degree
 #' of variability between the QC and study samples in any case...
+#' jo: I would also be OK to use in addition the RsdFilter - as long as we
+#' identify significant features later and can "annotate" some of them.
 ```
 
 The Dratio filter is a powerful tool to identify features that exhibit high
-variability in the data. By setting a threshold of 0.4, we remove features that
-have a high degree of variability between the QC and study samples. This
-filtering step ensures that only features with consistent abundance levels
-across the samples are retained for further analysis.
+variability in the data, relating the variance observed in QC samples with that
+in study samples. By setting a threshold of 0.4, we remove features that have a
+high degree of variability between the QC and study samples. This filtering step
+ensures that only features are retained that have considerably lower technical
+than biological variance. [jo: reformulated, because constant abundance across
+samples could also be interpreted that we remove potentially interesting
+samples, that have differences in abundances between the sample group]
+
+Note that the `rowDratio()` and `rowRsd()` functions from the
+`r Biocpkg("MetaboCoreUtils")` package could be used to calculate the actual
+numeric values for the estimates used for filtering, to e.g. to evaluate their
+distribution in the whole data set or identify data set dependent threshold values.
 
 Finally, we will evaluate the number of features left after the filtering steps
 and calculate the percentage of features that were removed.
@@ -2230,9 +2244,9 @@ nrow(res)/nrow(res_unfilt)*100
 ```
 
 The dataset has been reduced from `r nrow(res_unfilt)` to `r nrow(res)`
-features. We did remove a large amount of features but this is expected as we
-want to focus on the most reliable features for our analysis.
-For the rest of our analysis we need to separate the QC samples from the study
+features. We did remove a considerable amount of features but this is expected
+as we want to focus on the most reliable features for our analysis. For the
+rest of our analysis we need to separate the QC samples from the study
 samples. We will store the QC samples in a separate object for later use.
 
 ```{r}
@@ -2240,9 +2254,20 @@ res_qc <- res[, res$phenotype == "QC"]
 res <- res[, res$phenotype != "QC"]
 ```
 
+We in addition calculate the CV of the QC samples and add that as an additional
+column to the `rowData()` of our result object. These could be used later to
+prioritize identified *significant* features with e.g. low technical noise.
+
+```{r}
+#' Calculate the QC's CV and add as feature variable to the data set
+rowData(res)$qc_cv <- assay(res_qc, "norm") |>
+               rowRsd()
+```
+
 Now our data set has been preprocessed, normalized and filtered we can now start
-to understand the distribution of the data and estimate the variation due to
+to evaluate the distribution of the data and estimate the variation due to
 biology.
+
 
 # Differential abundance analysis.
 
