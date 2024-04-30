@@ -130,10 +130,12 @@ library(RColorBrewer)
 library(pander)
 library(readxl)
 library(MetaboCoreUtils)
-library(pheatmap)
 library(Biobase)
 library(MetaboAnnotation)
-library(ggfortify)
+library(pheatmap)
+library(vioplot)
+library(ggfortify)   # plot PCA
+library(gridExtra)   # to arrange multiple ggplots into single plots
 library(matrixStats) # summaries over matrices
 library(SummarizedExperiment)
 ```
@@ -1224,12 +1226,13 @@ impact of the alignment by comparing the variance in retention times for
 internal standards before and after alignment. To this end we need to first
 identify chromatographic peaks in each sample with an *m/z* and retention time
 close to the expected values for each internal standard. For this we use the
-`matchValues()` function from the `r Biocpkg("MetaboAnnotation")` package using
-the `MzRtParam` method to identify all chromatographic peaks with similar *m/z*
-(+/- 50ppm) and retention time (+/- 10 seconds) to the internal standard's
-values. We perform this matching separate for each sample and select for each
-internal standard, in each sample, using the `filterMatches()` and
-`SingleMatchParam`, the chromatographic peak with the highest intensity.
+`matchValues()` function from the `r Biocpkg("MetaboAnnotation")` package
+[@rainer_modular_2022] using the `MzRtParam` method to identify all
+chromatographic peaks with similar *m/z* (+/- 50ppm) and retention time (+/- 10
+seconds) to the internal standard's values. We perform this matching separate
+for each sample and select for each internal standard, in each sample, using the
+`filterMatches()` and `SingleMatchParam`, the chromatographic peak with the
+highest intensity.
 
 ```{r}
 #' Extract the matrix with all chromatographic peaks and add a column
@@ -1678,7 +1681,34 @@ After preprocessing, data normalization or scaling might needed to be applied to
 remove any technical variances from the data. While simple approaches like
 median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
-*preprocessCore*.
+`r Biocpkg("preprocessCore")`.
+
+Generally, for LC-MS data, noise can be categorized into 3 main groups:
+
+- Variances introduced by sample collection and initial processing, which can
+  include differences in sample amounts. This type of bias is expected to be
+  sample-specific and affect all signals in a sample in the same way. Methods
+  like median scaling, loess or quantiles normalization can adjust for this
+  bias.
+
+- Signal drifts along measurement of samples from an experiment. Reasons for
+  such drifts can be related to aging of the instrumentation used (columns,
+  detector), but also changes in metabolite abundances/characteristics within
+  the sample, such as oxydation or other modifications of the sample's
+  metabolites which are expected to affect samples measured later in a sample
+  run more than those measured at the beginning. This bias can play a major role
+  in large experiements measured over a long time range and is usually
+  considered to affect individual metabolites (or metabolite groups)
+  differently. For adjustment, moving average or linear regression-based
+  approaches can be used. The latter can for example be performed using the
+  `adjust_lm()` function from the `r Biocpkg("MetaboCoreUtils")` package.
+
+- Batch-related biases. This comprises any noise that is specific to a larger
+  set of samples, which can be the set of samples measured in one LC-MS
+  measurement run (i.e. from one analysis plate) or samples measured using a
+  specific batch of reagents. This noise is assumed to affect all samples in one
+  batch in the same way and linear modeling-based approaches can be used to
+  adjust for this.
 
 Unwanted variation can arise from various sources and is highly dependent on the
 experiment. Therefore, data normalization should be chosen carefully based on
@@ -1689,25 +1719,28 @@ Sample preparation biases could be evaluated using internal standards, depending
 however also when they were added to the sample mixes during sample
 processing. Repeated measurements of QC samples (usually a pool of the study
 samples) on the other hand allows to estimate and correct for LC-MS specific
-biases.
+biases. Also, proper planning of an experiment, such as measurement of study
+samples in random order, can largely avoid biases introduced by most of the
+above mentioned sources of variance.
 
-jo: different types of noise to account for. Mention between sample differences,
-general signal drifts and batch effects. Here we focus on only between sample
-differences, for large experiments the other two would be more important. Refer
-to the *MetaboCoreUtils* vignette/functionality for adjustment using linear
-models.
+In this workflow we present some tools to assess data quality and evaluate need
+for normalization as well options for normalization. For space reasons we do not
+provide solutions to adjust for all possible sources of variation.
+
 
 ## Initial quality assessment
 
 A principal component analysis (PCA) is a very helpful tool for an initial,
-unsupervised, quality assessment. In order to apply a PCA to the measured
-feature abundances, we need however to impute missing values. We assume that
-most missing values (after the gap-filling step) represent signal which is below
-detection limit. In such cases, missing values can be replaced with random
-values from the uniform distribution sampling numbers from half of smallest
-measured value to the smallest measured value for a specific feature. The
-uniform distribution is defined with two parameters (minimum and maximum) and
-all values between them have an equal probability of being selected.
+unsupervised, visualization of the data that also provides insights into
+potential quality issues in the data. In order to apply a PCA to the measured
+feature abundances, we need however to impute (the still present) missing
+values. We assume that most of these missing values (after the gap-filling step)
+represent signal which is below detection limit. In such cases, missing values
+can be replaced with random values from the uniform distribution sampling
+numbers from half of smallest measured value to the smallest measured value for
+a specific feature. The uniform distribution is defined with two parameters
+(minimum and maximum) and all values between them have an equal probability of
+being selected.
 
 Below we impute missing values with that approach and add the resulting data
 matrix as a new *assay* to our result object.
@@ -1717,8 +1750,8 @@ matrix as a new *assay* to our result object.
 load("SumExp.RData")
 loadResults(RDataParam("data.RData"))
 
-#' Impute missing values using uniform distribution
-na.unidis <- function(z) {
+#' Impute missing values using an uniform distribution
+na_unidis <- function(z) {
     na <- is.na(z)
     if (any(na)) {
         min = min(z, na.rm = TRUE)
@@ -1727,12 +1760,12 @@ na.unidis <- function(z) {
     z
 }
 
-#' Create an assay with the filled and imputed value.
-tmp <- apply(assay(res, "raw_filled"), MARGIN = 1, na.unidis)
+#' Row-wise impute missing values and add the data as a new assay
+tmp <- apply(assay(res, "raw_filled"), MARGIN = 1, na_unidis)
 assays(res)$raw_filled_imputed <- t(tmp)
 ```
 
-### PCA unsupervised
+### Principal Component Analysis
 
 PCA is a powerful tool to detect biases in the data. It is a dimensionality
 reduction technique that allows to visualize the data in a lower-dimensional
@@ -1740,25 +1773,28 @@ space. In the context of LC-MS data, PCA can be used to look for overall biases
 in batch, sample, injection index, ect, ... It is important to note that PCA is
 a linear method and might not be able to detect all biases in the data.
 
-Before plotting the PCA, we will log2 transform the data, center and
-scale the data. The log2 transformation is applied to stabilize the variance and
-remove dependency on absolute abundances.
+Before plotting the PCA, we will log2 transform, center and scale the data. The
+log2 transformation is applied to stabilize the variance and centering to remove
+dependency on absolute abundances.
 
-```{r unsupervised checks1, fig.height=4, fig.width=4, include=TRUE}
+```{r unsupervised checks1, fig.height=4, fig.width=8, include=TRUE}
 #' Log2 transform and scale data
 vals <- assay(res, "raw_filled_imputed") |>
     log2() |>
     t() |>
     scale(center = TRUE, scale = TRUE)
 
+#' Perform the PCA
 pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
 
-# Plot by phenotype - find way to plot side by side.
+#' Plot the results
 vals_st <- cbind(vals, phenotype = res$phenotype)
-autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
+pca_12 <- autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
     scale_color_manual(values = col_phenotype)
-autoplot(pca_res, data = vals_st, colour = 'phenotype', x = 3, y = 4, scale = 0) +
+pca_34 <- autoplot(pca_res, data = vals_st, colour = 'phenotype',
+                   x = 3, y = 4, scale = 0) +
     scale_color_manual(values = col_phenotype)
+grid.arrange(pca_12, pca_34, ncol = 2)
 ```
 
 The PCA above shows a clear separation of the study samples (plasma) from the QC
@@ -1769,56 +1805,68 @@ In some cases, it can be a better option to remove the imputed values and
 evaluate the PCA again. This is especially true if the imputed values are
 replacing a large proportion of the data.
 
+
 ### Intensity evaluation
 
-Another important aspect to consider is the intensity of the features. The
-intensity of the features can be evaluated by plotting the distribution of the
-log2 transformed feature abundances. Below we will show the distribution of the
-log2 transformed abundances for the raw and filled data.
+Global differences in feature abundances between samples (e.g. due to
+sample-specific biases) can be evaluated by plotting the distribution of the
+log2 transformed feature abundances using boxplots of violin plots. Below we
+show the number of detected chromatographic peaks per sample and the
+distribution of the log2 transformed feature abundances.
 
 ```{r counts1, fig.height=7, fig.width=5, include=TRUE}
 layout(mat = matrix(1:3, ncol = 1), height = c(0.2, 0.2, 0.8))
 
 par(mar = c(0.2, 4.5, 0.2, 3))
 barplot(apply(assay(res, "raw"), MARGIN = 2, function(x) sum(!is.na(x))),
-        col = col_sample, ylab = "features raw data", xaxt = "n",
-        space = 0.012)
+        col = paste0(col_sample, 80), border = col_sample,
+        ylab = "# detected peaks", xaxt = "n", space = 0.012)
+grid(nx = NA, ny = NULL)
 barplot(apply(assay(res, "raw_filled"), MARGIN = 2, function(x) sum(!is.na(x))),
-        col = col_sample, ylab = "features filled data", xaxt = "n",
+        col = paste0(col_sample, 80), border = col_sample,
+        ylab = "# detected + filled peaks", xaxt = "n",
         space = 0.012)
-boxplot(log2(assay(res, "raw_filled")), xaxt = "n",
-        ylab = expression(log[2]~abundance~filled~data),
-        col = col_sample, outline=FALSE, medlty = "blank", border = col_sample,
-        boxwex = 0.99 )
+grid(nx = NA, ny = NULL)
+vioplot(log2(assay(res, "raw_filled")), xaxt = "n",
+        ylab = expression(log[2]~feature~abundance),
+        col = paste0(col_sample, 80), border = col_sample)
 points(colMedians(log2(assay(res, "raw_filled")), na.rm = TRUE), type = "b",
-       pch = 16)
+       pch = 1)
 grid(nx = NA, ny = NULL)
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE, ncol = 3,
        cex = 0.8,  bty = "n")
 ```
 
-The superior part of the plot show that the gap filling steps allowed to rescue
+The upper part of the plot show that the gap filling steps allowed to rescue
 a consequent number of *NAs* and allowed us to have a more equivalent number of
-features per sample. As we assume that every sample should have a similar
+feature values per sample. As we assume that every sample should have a similar
 amount of features detected. Additionally we observe that, on average, the
 signal distribution from the individual samples is very similar.
 
-Another way to evaluate the distribution of value within our data are relative
-log abundance plots (RLA). Within group RLA assess the tightness of replicate
-within groups and should have a median close to zero and low variation around
-it. When used across groups, they allow to compare behavior between groups.
-Below we will perform the former to show relative abundance of each sample to
-the other sample of the same group by setting `group = res$phenotype`.
+An alternative way to evaluate differences in abundances between samples are
+*relative log abundance* (RLA) plots [de_livera_normalizing_2012]. An RLA value
+is the abundance of a feature in a sample relative to the median abundance of
+the same feature across multiple samples. We can discriminate between *within
+group* and *across group* RLAs, depending whether the abundance is compared
+against samples within the same sample group or across all samples. Within group
+RLA assess the tightness of replicate within groups and should have a median
+close to zero and low variation around it. When used across groups, they allow
+to compare behavior between groups. Generally, between-sample differences can be
+easier spotted using RLA plots. Below we calculate and visualize within group
+RLA values using the `rowRla()` function from the `r Biocpkg("MsCoreUtils")`
+package defining with parameter `f` the sample groups.
 
 ```{r rla-plot raw and filled1, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
-par(mfrow = c(1, 1), mar = c(0.2, 4.5, 2.5, 3))
-boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
+par(mfrow = c(1, 1), mar = c(3.5, 4.5, 2.5, 1))
+boxplot(MsCoreUtils::rowRla(assay(res, "raw_filled"),
+                            f = res$phenotype, transform = "log2"),
         cex = 0.5, pch = 16,
-        col = col_sample, ylab = "RLA",
-        border = paste0(col_sample, 40), boxwex = 1,
+        col = paste0(col_sample, 80), ylab = "RLA",
+        border = col_sample, boxwex = 1,
         outline = FALSE, xaxt = "n", main = "Relative log abundance",
         cex.main = 1)
+axis(side = 1, at = seq_len(ncol(res)), labels = colData(res)$sample_name)
 grid(nx = NA, ny = NULL)
 abline(h = 0, lty=3, lwd = 1, col = "black")
 legend("topright", col = col_phenotype,
@@ -1827,20 +1875,34 @@ legend("topright", col = col_phenotype,
 ```
 
 On the RLA plot above, we can observe that the medians for most samples are
-indeed centered around 0. Exception are two of the *CVD* samples. But
-normalization (hopefully) helps there.
+indeed centered around 0. Exception are two of the *CVD* samples. Thus, while
+the distribution of signals across samples is comparable, some differences seem
+to be present that require a between sample normalization.
+
 
 ### Internal standard
 
-We want to select the internal standard compounds for which we have features
-defined. For this, we first reuse the internal standards data from before.
-Using the `matchValues()` function from the `MetaboAnnotation` package, we will
-identify features matching m/z and RT of internal standards. With `mzColname`
-and `rtColname` we specify the column names in query (our IS) and target
-(features detected in the data set) that contain the m/z or RT values.
+Depending when internal standards (IS) are added to the sample mixes, they allow
+evaluation of variances introduced by the subsequent processing and analysis
+steps. For the present experiment, IS were added to the original plasma samples
+before sample extraction which included also protein and lipid removal
+steps. They can therefore be used to evaluate variances introduced by sample
+extraction and any subsequent steps, can however not be used to infer
+conclusions on performance or differences on the original sample collection
+(blood drawing, storage, plasma creation).
 
-We then filter these *matches* to only keep IS that match with ONLY one feature
-and remove the others.
+We loaded before the *m/z* and expected retention times for the list of 20 IS,
+now we need to identify features representing signal from these. Thus, we again
+use the `matchValues()` function from the `r Biocpkg("MetaboAnnotation")`
+package. With parameters `mzColname` and `rtColname` we specify the column names
+in the query (our IS) and target (features detected in the data set) that
+contain the *m/z* and retention time values on which to match entities.
+
+We then
+filter these *matches* to only keep IS that match with a single feature using
+the `filterMatches()` function in combination with `SingleMatchParam`.
+
+[jo: original code selected the feature with closest RT, not the single one.]
 
 ```{r include=TRUE}
 # Do we keep IS in normalisation ? Does not give much info... Would simplify a bit
@@ -1858,46 +1920,31 @@ match_intern_standard <- matchValues(
     param = MzRtParam(ppm = 50, toleranceRt = 10))
 
 #' Keep only matches with a 1:1 mapping standard to feature.
-param <- SingleMatchParam(duplicates = "closest", column = "score_rt",
+param <- SingleMatchParam(duplicates = "remove", column = "score_rt",
                           decreasing = TRUE)
 match_intern_standard <- filterMatches(match_intern_standard, param)
 
 intern_standard$feature_id <- match_intern_standard$target_feature_id
 intern_standard <- intern_standard[!is.na(intern_standard$feature_id), ]
-
-## Let's look at the internal standards
-is_features <- featureChromatograms(
-    data, features = intern_standard[c("methionine_13C_15N", "cystine_13C_15N"),
-                                     "feature_id"], expandRt = 5)
-
-par(mfrow = c(1, 2))
-plot(is_features[1, ], col = col_sample,
-     peakBg = paste0(col_sample[chromPeaks(is_features[1, ])[, "sample"]], 40),
-     main = intern_standard["methionine_13C_15N", "name"])
-abline(v = intern_standard["methionine_13C_15N", "RT"], lty = 2)
-plot(is_features[2, ], col = col_sample,
-     peakBg = paste0(col_sample[chromPeaks(is_features[2, ])[, "sample"]], 40),
-     main = intern_standard["cystine_13C_15N", "name"])
-abline(v = intern_standard["cystine_13C_15N", "RT"], lty = 2)
 ```
 
-As anticipated, our two internal standards have effectively identified features.
 These internal standards play a crucial role in guiding the normalization
 process. Given the assumption that the samples were artificially spiked, we
 possess a known ground truth—that the abundance or intensity of the internal
-standard should be consistent. Consequently, normalization aims to minimize
-variation between samples for the internal standard, reinforcing the
-reliability of our analyses.
-This list of IS will be used to assess the normalization process.
+standard should be consistent. Any difference is expected to be due to technical
+differences/variance. Consequently, normalization aims to minimize variation
+between samples for the internal standard, reinforcing the reliability of our
+analyses.
+
 
 ## Between sample normalisation
 
 The previous RLA plot showed that the data had some biases that need to be
 corrected. Therefore, we will implement between-sample normalization using
 filled-in features. This process effectively mitigates variations influenced by
-technical issues, such as differences in sample preparation and injection
-methods.  In this instance, we will employ a commonly used technique known as
-median scaling.
+technical issues, such as differences in sample preparation, processing and
+injection methods. In this instance, we will employ a commonly used technique
+known as median scaling [@de_livera_normalizing_2012].
 
 ### Median scaling
 
@@ -1941,23 +1988,45 @@ abundances before and after normalization. Additionally, the relative log
 abundance (RLA) plots can be used to assess the tightness of replicates within
 groups and compare the behavior between groups.
 
-### PCA
+
+### Principal Component Analysis
+
 
 ```{r fig.width=7, include=TRUE}
 #' Data before
 vals_st <- cbind(vals, phenotype = res$phenotype)
-autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
+pca_raw <- autoplot(pca_res, data = vals_st,
+                    colour = 'phenotype', scale = 0) +
     scale_color_manual(values = col_phenotype)
 
 #' Data after
-vals_norm <- apply(assay(res, "norm"), MARGIN = 1, na.unidis) |>
+vals_norm <- apply(assay(res, "norm"), MARGIN = 1, na_unidis) |>
     log2() |>
     scale(center = TRUE, scale = TRUE)
 
 pca_res_norm <- prcomp(vals_norm, scale = FALSE, center = FALSE)
 vals_st_norm <- cbind(vals_norm, phenotype = res$phenotype)
-autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
+pca_adj <- autoplot(pca_res_norm, data = vals_st_norm,
+                    colour = 'phenotype', scale = 0) +
     scale_color_manual(values = col_phenotype)
+
+grid.arrange(pca_raw, pca_adj, ncol = 2)
+```
+
+Normalization did not have a large impact on PC1 or PC2 (see above), but the
+separation of the study groups on PC3 seems to be better and difference between
+QC samples lower after normalization (see below).
+
+```{r}
+pca_raw <- autoplot(pca_res, data = vals_st ,
+                    colour = 'phenotype', x = 3, y = 4, scale = 0) +
+    scale_color_manual(values = col_phenotype)
+pca_adj <- autoplot(pca_res_norm, data = vals_st_norm,
+                    colour = 'phenotype', x = 3, y = 4, scale = 0) +
+    scale_color_manual(values = col_phenotype)
+
+grid.arrange(pca_raw, pca_adj, ncol = 2)
+
 ```
 
 The PCA plots above show that the normalization process has not changed the
@@ -1965,15 +2034,20 @@ overall structure of the data. The separation between the study and QC samples
 remains the same. This is an expected results as normalisation should not
 correct for biological variance and only technical.
 
-### RLA
+
+### Intensity evaluation
+
+We compare the RLA plots before and after between-sample normalization to
+evaluate its impact on the data.
+
 
 ```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
-par(mfrow = c(2, 1), mar = c(1, 4, 3, 1))
+par(mfrow = c(2, 1), mar = c(3.5, 4.5, 3, 1))
 
 boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
-        cex = 0.5, pch = 16, col = col_sample, ylab = "RLA",
-        border = paste0(col_sample, 40), notch = TRUE, cex.main = 1,
-        outline = FALSE, xaxt = "n", main = "Raw data", boxwex = 1)
+        cex = 0.5, pch = 16, ylab = "RLA", border = col_sample,
+        col = paste0(col_sample, 80), cex.main = 1, outline = FALSE,
+        xaxt = "n", main = "Raw data", boxwex = 1)
 grid(nx = NA, ny = NULL)
 legend("topleft", inset = c(0, -0.2), col = col_phenotype,
        legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE,
@@ -1981,87 +2055,87 @@ legend("topleft", inset = c(0, -0.2), col = col_phenotype,
 abline(h = 0, lty=3, lwd = 1, col = "black")
 
 boxplot(rowRla(assay(res, "norm"), group = res$phenotype),
-        cex = 0.5, pch = 16,
-        col = col_sample, ylab = "RLA",
-        border = paste0(col_sample, 40), notch = TRUE, boxwex = 1,
-        outline = FALSE, xaxt = "n", main = "After normalization", cex.main = 1)
+        cex = 0.5, pch = 16, ylab = "RLA", border = col_sample,
+        col = paste0(col_sample, 80), boxwex = 1, outline = FALSE,
+        xaxt = "n", main = "After normalization", cex.main = 1)
+axis(side = 1, at = seq_len(ncol(res)), labels = res$sample_name)
 grid(nx = NA, ny = NULL)
-abline(h = 0, lty=3, lwd = 1, col = "black")
+abline(h = 0, lty = 3, lwd = 1, col = "black")
 ```
 
-On the other hand, the RLA plot shows that the normalization process has
-effectively centered the data around the median. The medians for all samples are
-now closer to zero, indicating that the normalization process has been effective
-in reducing the bias in the data.
+The normalization process has effectively centered the data around the median
+and medians for all samples are now closer to zero.
+
 
 ### Coefficient of variation
 
-Below we can see the coefficient of variation before and after normalization in
-the different sample types as well as for the IS.
-
-jo: boxplot/violin plot of internal standards per sample?
+We next evaluate the coefficient of variation (CV, also referred to as *relative
+standard deviation* RSD) for features across samples from either QC or study
+samples. In QC samples, the CV would represent technical noise, while in study
+samples it would include in addition also expected biological differences. Thus,
+normalization should reduce the CV in QC samples, while only slightly reducing
+the CV in study samples. The CV (RSD) is calculated below using the `rowRsd()`
+function from the `r Biocpkg("MetaboCoreUtils")` package. By setting `mad =
+TRUE` we use a more robust calculation using the median absolute deviation
+instead of the standard deviation.
 
 ```{r include=TRUE, results = "asis"}
 index_study <- res$phenotype %in% c("CTR", "CVD")
 index_QC <- res$phenotype == "QC"
 
 sample_res <- cbind(
-    QC_Raw = rowRsd(assay(res, "raw_filled")[, index_QC],
+    QC_raw = rowRsd(assay(res, "raw_filled")[, index_QC],
                     na.rm = TRUE, mad = TRUE),
     QC_norm = rowRsd(assay(res, "norm")[, index_QC],
                      na.rm = TRUE, mad = TRUE),
-    Study_Raw = rowRsd(assay(res, "raw_filled")[, index_study],
+    Study_raw = rowRsd(assay(res, "raw_filled")[, index_study],
                        na.rm = TRUE, mad = TRUE),
     Study_norm = rowRsd(assay(res, "norm")[, index_study],
-                        na.rm = TRUE, mad = TRUE),
-    IS_Raw = rowRsd(assay(res, "raw_filled")[intern_standard$feature_id, ],
-                    na.rm = TRUE, mad = TRUE),
-    IS_norm = rowRsd(assay(res, "norm")[intern_standard$feature_id, ],
-                     na.rm = TRUE, mad = TRUE)
+                        na.rm = TRUE, mad = TRUE)
 )
 
-#' Quantile
+#' Summarize the values across features
 res_df <- data.frame(
-    QC_raw = quantile(sample_res[, "QC_Raw"], na.rm = TRUE),
-    QC_Norm = quantile(sample_res[, "QC_norm"], na.rm = TRUE),
-    Study_raw = quantile(sample_res[, "Study_Raw"], na.rm = TRUE),
-    Study_Norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE),
-    Intern_standard_raw = quantile(sample_res[, "IS_Raw"], na.rm = TRUE),
-    Intern_standard_norm = quantile(sample_res[, "IS_norm"], na.rm = TRUE)
+    QC_raw = quantile(sample_res[, "QC_raw"], na.rm = TRUE),
+    QC_norm = quantile(sample_res[, "QC_norm"], na.rm = TRUE),
+    Study_raw = quantile(sample_res[, "Study_raw"], na.rm = TRUE),
+    Study_norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE)
 )
+
 cpt <- paste0("Distribution of RSD values across samples for the raw and ",
               "normalized data.")
 pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
-The table above shows the distribution of the coefficient of variation
-(RSD) for both raw and normalized data. As anticipated, the RSD values for the
-quality controls (QCs), which reflect technical variance, are lower compared to
-those for the study samples, which include both technical and biological
+The table above shows the distribution of the coefficient of variation (CV, RSD)
+for both raw and normalized data. As anticipated, the CV values for the quality
+controls (QCs), which reflect technical variance, are lower compared to those
+for the study samples, which include both technical and biological
 variance. Overall, minimal disparity exists between the raw and normalized data,
 which is a positive indication that the normalization process hasn't introduced
-bias into the dataset.
+bias into the dataset, but also reflects the little differences in average
+abundances between sample in the raw data.
 
-Additionally, it's important to highlight the very low between-sample
-differences in the raw data. This absence suggests uniformity in sample
-preparation and processing, as all samples were measured in the same run,
-minimizing biases from MS instrumentation.
 
 ```{r}
 save(data, file = "data_afternorm.RData")
 save(res, file = "SumExp_afternorm.RData")
 ```
 
+
 ### Conclusion
 
 The overall conclusion of the normalization process is that very little variance
-was present from the beginning however the normalization process was able to
+was present from the beginning, normalization was however was able to
 center the data around the median (as shown by the RLA plot).
-Given the simplicity and limited size of our dataset example, we will conclude
+Given the simplicity and limited size of our example dataset, we will conclude
 the normalization process at this stage. For more intricate datasets with
-diverse biases, a tailored approach would be devised. For instance, employing
-the `limma` package to execute linear models can effectively address biases
-stemming from batch effects or injection order.
+diverse biases, a tailored approach would be devised. This could include also
+approaches to adjust for signal drifts or batch effects. One possible option
+would be to use a linear-model based approach such as can for example be
+applied with the `adjust_lm()` function from the `r Biocpkg("MetaboCoreUtils")`
+package.
+
 
 # Quality control: Feature prefiltering
 
