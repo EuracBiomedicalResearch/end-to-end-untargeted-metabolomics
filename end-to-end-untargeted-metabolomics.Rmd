@@ -138,6 +138,7 @@ library(ggfortify)   # plot PCA
 library(gridExtra)   # to arrange multiple ggplots into single plots
 library(matrixStats) # summaries over matrices
 library(SummarizedExperiment)
+library(limma) # differential abundance
 ```
 
 # Data import
@@ -2240,7 +2241,7 @@ and calculate the percentage of features that were removed.
 nrow(res)
 
 #' Percentage left: end/beginning
-nrow(res)/nrow(res_unfilt)*100
+nrow(res)/nrow(res_unfilt) * 100
 ```
 
 The dataset has been reduced from `r nrow(res_unfilt)` to `r nrow(res)`
@@ -2269,27 +2270,22 @@ to evaluate the distribution of the data and estimate the variation due to
 biology.
 
 
-# Differential abundance analysis.
+# Differential abundance analysis
 
 After normalization and quality control, the next step is to identify features
 that are differentially abundant between the study groups. This crucial step
 allows us to identify potential biomarkers or metabolites that are associated
-with the study groups. In this section, we will perform a differential abundance
-analysis  to identify significant features that are statistically more abundant
-in either CVD or CTR
+with the study groups. There are various approaches and methods available for
+the identification of such features of interest. In this workflow we use a
+multiple linear regression analysis to identify features with significantly
+difference in abundances between the CVD or CTR study group.
+
+Before performing the tests we evaluate similarities between study samples using
+a PCA (after excluding the QC samples to avoid them influencing the results).
 
 ```{r}
-#' Redefining colours to investigate variance origins
-col_phenotype <- brewer.pal(4, name = "Dark2")[c(4, 3)]
-names(col_phenotype) <- c("CVD",
-                          "CTR")
 col_sample <- col_phenotype[res$phenotype]
-```
 
-First let's observe how the different study groups separate after the
-adjustments that were made to prevent variances other than biological.
-
-```{r}
 #' Log transform and scale the data for PCA analysis
 vals <- assay(res, "norm_imputed") |>
     t() |>
@@ -2297,80 +2293,68 @@ vals <- assay(res, "norm_imputed") |>
     scale(center = TRUE, scale = TRUE)
 pca_res <- prcomp(vals, scale = FALSE, center = FALSE)
 
-# Plot by phenotype - find way to plot side by side.
 vals_st <- cbind(vals, phenotype = res$phenotype)
 autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
     scale_color_manual(values = col_phenotype)
-# Phili: PC3 and PC4 does not show very interesting info for the rest of the
-# pipeline i think (?)
 ```
 
-The PCA plot above shows that the study samples seem to be separated based on
-phenotype. This is a good indication that there are differences in the
-metabolite profiles between the two groups. However we can also see an outlier
-in the control group. This variation has not been corrected by the previous
-step and should be taken into account in the analysis.
+The samples clearly separate by study group on PCA indicating that there are
+differences in the metabolite profiles between the two groups. However, what
+drives the separation on PC1 is not clear. Below we evaluate whether this could
+be explained by the other available phenotype of our study, age:
 
 ```{r}
 vals_st <- cbind(vals, age = res$age)
 autoplot(pca_res, data = vals_st , colour = 'age', scale = 0)
-#' i don't like the pca for age using base R, I can't make the legend a
-#' gradient. but autoplot makes it complicated to have 2 plots next to
-#' eachother, so not sure what to do for the publication. I'll try to figure
-#' something out. Probably need to do a deep dive in ggplot. would be nice also
-#' for later plots anyway.
-#' jo: I guess we can drop that alltogether, there seems to be no age
-#' dependency in the data.
-#' phili: yess I kinda agree but age is the only biological difference between
-#' the different samples. i think in term of workflow it's good to show what
-#' people *should* do with their data.
 ```
 
-The PCA above does not show any clear separation based on age. This is a good
-indication that the age differences between the samples do not have a strong
-impact on the metabolite profiles. We can therefore continue with the analysis.
+According to the PCA above, PC1 does not seem to be related to age. Even if
+there is some variance in the data set we can't explain at this stage, we
+proceed with the (supervised) statistical tests to identify features of
+interest. We compute linear models for each metabolite explaining the observed
+feature abundance by the available study variables. While we could also use the
+base R function `lm()`, we utilize the `R Biocpkg("limma")` package to conduct
+the differential abundance analysis. The *moderated* test statistics
+[@smyth_linear_2004] provided by this package are specifically well suited for
+experiments with a limited number of replicates. For our tests we use a linear
+model `~ phenotype + age` hence explaining the abundances of one metabolite by
+the study group assignment and age of each individual. The analysis might
+benefit from inclusion of a study covariate associated with PC2 or explaining
+the variance seen in that principal component, but for the present analysis only
+the participant's age and disease association was provided.
 
-To estimate the variation due to biological differences depicted in the first
-PCA plot above, we will compute linear models for each metabolite. We will
-utilize the `limma` package to conduct the differential abundance analysis.
-This package is extensively employed for conducting differential expression
-analysis in genomics and can be adapted for metabolomics data analysis as well.
-
-This essentially involves multiple linear regression, but it should be applied
-individually to each metabolite, as they are heavily correlated with each
-other. In the model, we will only include age
-(e.g. `model.matrix(~ phenotype + age)`) as it is the sole known variable
-among our samples. We also set up a cut-off for significance at 0.05 and a
-cut-off for log2 fold change at 0.5. The `lmFit` function with then fit a
-linear model to each row (metabolite) of the data, explaining the metabolite
-concentrations by phenotype and age. The `eBayes` function will then apply an
-empirical Bayes smoothing to the standard errors of the estimated log-fold
-changes.
+Below we define the design of the study with the `model.matrix()` function and
+fit feature-wise linear models to the log2 transformed abundances using the
+`lmFit()` function. P-values for significance of association are then calculated
+using the `eBayes()` function, that also performs the empirical Bayes-based
+robust estimation of the standard errors. See also the excellent vignette/user
+guide of the `r Biocpkg("limma")` package for examples and details on the linear
+model procedure.
 
 ```{r}
-library(limma)
-#' prep parameters
-p.cut <- 0.05     # cut-off for significance.
-m.cut <- 0.5      # cut-off for log2 fold change
-
+#' Define the linear model to be applied to the data
 age <- res$age
 phenotype <- factor(res$phenotype)
+design <- model.matrix(~ phenotype + age)
 
 #' Fit the linear model to the data, explaining metabolite
 #' concentrations by phenotype and age.
-design <- model.matrix(~ phenotype + age)
 fit <- lmFit(log2(assay(res, "norm_imputed")), design = design)
 fit <- eBayes(fit)
 ```
 
-After the linear model has been generated, we can now proceed to extract the
+After the linear models habe been fitted, we can now proceed to extract the
 results. We will create a data frame containing the coefficients, raw and
-adjusted p-values (applying a Benjamini-Hochberg correction,
-e.g. `method = "BH"` for improved control of the false discovery rate), the
-average intensity of signals in CVD and CTR samples, and an indication of
-whether a feature is deemed significant or not.
+adjusted p-values (applying a Benjamini-Hochberg correction, e.g. `method =
+"BH"` for improved control of the false discovery rate), the average intensity
+of signals in CVD and CTR samples, and an indication of whether a feature is
+deemed significant or not. We consider all metabolites with an adjusted p-value
+smaller than 0.05 to be significant, but we could also include the (absolute)
+difference in abundances in the cut-off criteria. At last we add the
+differential abundance results to the result object's `rowData()`.
 
 ```{r}
+#' Compile a result data frame
 tmp <- data.frame(
     coef.CVD = fit$coefficients[, "phenotypeCVD"],
     pvalue.CVD = fit$p.value[, "phenotypeCVD"],
@@ -2380,13 +2364,13 @@ tmp <- data.frame(
     avg.CTR = rowMeans(
         log2(assay(res, "norm_imputed")[, res$phenotype == "CTR"]))
 )
-tmp$significant.CVD <- abs(tmp$coef.CVD) > m.cut & tmp$adjp.CVD < p.cut
+tmp$significant.CVD <- tmp$adjp.CVD < 0.05
+#' Add the results to the object's rowData
 rowData(res) <- cbind(rowData(res), tmp)
 ```
 
-By using `rowData(res) <-`, we can store the results of the differential
-abundance analysis are now stored in the `SummarizedExperiment` object. We can
-now proceed to visualize the distribution of the raw and adjusted p-values.
+We can now proceed to visualize the distribution of the raw and adjusted
+p-values.
 
 ```{r histogram, echo = FALSE, fig.cap = "Distribution of raw (left) and adjusted p-values (right)."}
 par(mfrow = c(1, 2))
@@ -2398,17 +2382,20 @@ hist(rowData(res)$adjp.CVD, breaks = 64, xlab = expression(p[BH]~value),
      cex.main = 1, cex.lab = 1, cex.axis = 1)
 ```
 
-The histograms above show the distribution of raw and adjusted p-values. The
-adjusted p-values are more conservative and account for multiple testing. Which
-is important here as we fit a linear model to each feature/metabolite and
-therefore perform a large number of tests. We do see that some features have
-very low p-values, indicating that they are likely to be significantly
-different between the two study groups.
+The histograms above show the distribution of raw and adjusted p-values. Except
+for an enrichment of small p-values, the raw p-values are (more or less)
+uniformly distributed, which indicates the absence of any strong systematic
+biases in the data. The adjusted p-values are more conservative and account for
+multiple testing which is important here as we fit a linear model to each
+feature and therefore perform a large number of tests which leads to a high
+chance of false positive findings. We do see that some features have very low
+p-values, indicating that they are likely to be significantly different between
+the two study groups.
 
-Below we will plot the adjusted p-values against the log2 fold change. This
-volcano plot will allow us to visualize the features that are significantly
-different between the two study groups. We will also display the number of
-significant features and the most significant features.
+Below we plot the adjusted p-values against the log2 fold change of (average)
+abundances. This volcano plot will allow us to visualize the features that are
+significantly different between the two study groups. These are highlighted with
+a blue color in the plot below.
 
 ```{r volcano, echo = FALSE, fig.cap = "Volcano plot showing the analysis results."}
 #' Plot volcano plot of the statistical results
@@ -2417,10 +2404,8 @@ plot(rowData(res)$coef.CVD, -log10(rowData(res)$adjp.CVD),
      xlab = expression(log[2]~difference),
      ylab = expression(-log[10]~p[BH]), pch = 16, col = "#00000060",
      cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.3)
-rect(xleft = -100, ybottom = -log10(p.cut), xright = -m.cut, ytop = 100,
-     border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
-rect(xleft = m.cut, ybottom = -log10(p.cut), xright = 100, ytop = 100,
-     border = NA, col = paste0(brewer.pal(3, "Set1")[2], 10))
+grid()
+abline(h = -log10(0.05), col = "#0000ffcc")
 if (any(rowData(res)$significant.CVD)) {
     points(rowData(res)$coef.CVD[rowData(res)$significant.CVD],
            -log10(rowData(res)$adjp.CVD[rowData(res)$significant.CVD]),
@@ -2428,57 +2413,57 @@ if (any(rowData(res)$significant.CVD)) {
 }
 ```
 
-```{r}
-#' nb of significant features
-sum(rowData(res)$significant.CVD)
-```
-
-We therefore have `r sum(rowData(res)$significant.CVD)` features that are
-significantly different between the two study groups. Below we will display the
-most significant features.
+The most interesting features are in the top corners in the volcano plot (i.e.,
+features with a large difference in abundance between the groups and a small
+p-value). All significant features have a negative coefficient (log2 fold change
+value) indicating that their abundance is lower in CVD samples compared to the
+control samples. These features are listed, along with their average difference
+in (log2) abundance between the compared groups, their adjusted p-values, their
+average (log2) abundance in each sample group and their RSD (CV) in QC samples
+in the table below.
 
 ```{r result-table, echo = FALSE, results = "asis"}
 # Table of significant features
 tab <- rowData(res)[rowData(res)$significant.CVD,
                     c("mzmed", "rtmed", "coef.CVD", "adjp.CVD",
-                      "avg.CTR", "avg.CVD")]
+                      "avg.CTR", "avg.CVD", "qc_cv")] |>
+    as.data.frame()
 tab <- tab[order(abs(tab$coef.CVD), decreasing = TRUE), ]
-tab <- cbind(tab,
-             rsd_QC = rowRsd(assay(res_qc, "norm_imputed")[rownames(tab), ]))
 pandoc.table(
-    as.data.frame(tab), style = "rmarkdown", split.table = Inf,
+    tab, style = "rmarkdown", split.table = Inf,
     caption = "Features with significant differences in abundances.")
 ```
 
-```{r}
-# Phili: i woud actually remove that it's a bit messay and all the important info are in the table above.
-data_sample <- data[sampleData(data)$phenotype != "QC", keepFeatures = TRUE]
-fts_sign <- featureChromatograms(
-    data_sample, features = rownames(tab), expandRt = 5, filled = TRUE)
+Below we visualize the EICs of the significant features to evaluate their (raw)
+signal. We restrict the MS data set to study samples. Parameter `keepFeatures =
+TRUE` ensures that identified features are retained in the subset object.
 
-for (i in rownames(fts_sign)) {
-    tmp <- fts_sign[i,]
-    pk_col <- col_phenotype[as.character(tmp$phenotype[chromPeaks(tmp)[, "column"]])]
-    plotChromPeakDensity(tmp, peakPch = 16,
-                         peakCol = paste0(pk_col, 80),
-                         peakBg = paste0(pk_col, 10))
-    legend("topright", col = col_phenotype,
-           legend = names(col_phenotype), lty = 1, cex = 0.5)
-}
+```{r}
+#' Restrict the raw data to study samples.
+data_study <- data[sampleData(data)$phenotype != "QC", keepFeatures = TRUE]
+#' Extract EICs for the significant features
+eic_sign <- featureChromatograms(
+    data_study, features = rownames(tab), expandRt = 5, filled = TRUE)
+
+#' Plot the EICs. With parameter `peakBg` we define the (background) color for
+#' each individual chromatographic peak in the EIC object.
+plot(eic_sign, col = col_sample,
+     peakBg = paste0(col_sample[chromPeaks(eic_sign)[, "sample"]], 40))
+legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
+
 ```
 
-We can see that the features that are significantly different between the two
-study groups are all present in CTR samples and significantly lower/absent in
-CVD samples. This is a good indication that these features could be potential
-biomarkers for CVD. Another characteristic to note is the low intensity of some
-of these features. This means that unfortunately these feature are probably not
-going to be selected for MS2 fragmentation by the mass spectrometer, as the
-set up will prioritize the most intense features. (that's right no even with the inclusion list ?)
+The EICs for all significant features show a clear and single peak. Their
+intensities are (as already observed above) much larger in the CTR than in the
+CVD samples. With the exception of the second feature (second EIC in the top
+row), the intensities for all significant features are however generally
+low. This might make it challenging to identify them using an LC-MS/MS setup.
 
 ```{r}
 save(data, file = "data_after_DA.RData")
 save(res, file = "Sum_Exp_afterDA.RData")
 ```
+
 
 # Annotation
 
