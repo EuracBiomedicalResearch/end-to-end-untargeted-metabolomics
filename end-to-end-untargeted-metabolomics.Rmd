@@ -139,6 +139,9 @@ library(gridExtra)   # to arrange multiple ggplots into single plots
 library(matrixStats) # summaries over matrices
 library(SummarizedExperiment)
 library(limma) # differential abundance
+library(AnnotationHub) # Annotation resources
+library(CompoundDb)    # Access small compound annotation data.
+library(MetaboAnnotation) # Functionality for metabolite annotation.
 ```
 
 # Data import
@@ -2467,95 +2470,128 @@ save(res, file = "Sum_Exp_afterDA.RData")
 
 # Annotation
 
-Now that we have establish a list of interesting feature for a potential
-biomarker. We can now annotate these features to identify the compounds they
-represent. Annotation can be performed at different level of confidence.
-A low level confidence but fast matching is to annotate using the MS1 level
-information of the significant features. If the user want higher confidence
-annotation, they will use MS2 data. In this experiment MS2 spectra was captured
-in a second run, using an inclusion list.
-In this next section we will demonstrate multiple way to annotate our
-significant features. As well as discussing alternative strategy based on the
-data and the overall goal of the experiment.
+We have now identified the features with significant differences in abundances
+that provide information on metabolic pathways that differentiate affected from
+healthy individuals and might hence also serve as biomarkers. However, at this
+stage of the analysis we don't know what compounds/metabolites they actually
+represent. We thus need now to annotate these signals. Annotation can be
+performed at different level of confidence
+[@sumner_proposed_2007,@schymanski_identifying_2014]. The lowest level of
+annotation, with the highest rate of false positive hits, bases on the features
+*m/z* ratios. Higher levels of annotations employ fragment spectra (MS2 spectra)
+of ions of interest requiring this however acquisition of additional data. In
+this section we will demonstrate multiple ways to annotate our significant
+features using functionality provided through Bioconductor packages. Excellent
+alternative approaches, and external software tools exist too and will be
+discussed later on in the section. [jo: last sentence is maybe a bit clumsy and
+needs rephrasing; just don't want to say that we have the best solution here]
 
 ## MS1 based annotation
 
-As explained previously, we will initially demonstrate a simple and efficient
-method to analyze significant features utilizing only MS1 level data. This
-approach relies on the m/z value of the feature and will align it with a
-database of known compounds. To achieve this, we will match the m/z values of
-the resulting features to the MassBank database using the `MatchValues()`
-function.
+Our data set was acquired using an LC-MS setup and our features are thus only
+characterized by their *m/z* and retention times. The retention time is LC-setup
+specific and, without prior data/knowledge provide only little information on
+the features' identity. Modern MS instruments have a high accuracy and the *m/z*
+values should therefore be a reliable estimates of the compound ion's
+mass-to-charge ratio. As a first approach we use thus the features' *m/z* values
+and match them against reference values, i.e. exact masses of chemical
+compounds, that are provided by a reference database, in our case the MassBank
+database. The full MassBank data is re-distributed through Bioconductor's
+`r Biocpkg("AnnotationHub")` resource, which simplifies their integration into
+reproducible R-based analysis workflows. Below we load the resource, list all
+available MassBank data sets/releases and load one of them.
 
 ```{r}
-load("data_after_DA.RData")
-load("Sum_Exp_afterDA.RData")
-```
-
-We will first load the MassBank database using the packages *AnnotationHub* and
-*CompoundDb* and extract the relevant information for the annotation process.
-
-We will then define the parameters for the matching process using
-`Mass2MzParam`. This function allows us to specify the `adducts` to consider,
-the `tolerance` for the matching process, and the `ppm` error. The parameter
-`mzColname()` here specficied is the column name in the `res` object that
-contains the m/z values of the features. All of the function for matching that
-are going ot be described below are part of the *MetaboAnnotation* package.
-Finally, we will match the m/z values of the significant features to the
-MassBank database and extract the relevant information for annotation.
-
-```{r}
-#' Packages specifically used for annotation
-library(AnnotationHub)
-library(CompoundDb)
-library(MetaboAnnotation)
-
 #' load reference data
 ah <- AnnotationHub()
+#' List available MassBank data sets
 query(ah, "MassBank")
+#' Load one MAssBank release
 mb <- ah[["AH116166"]]
 
-#' Extract info of interest
+```
+
+The MassBank data is provided as a self-contained SQLite database and data can
+be queried and accessed through the `r Biocpkg("CompoundDb")` Bioconductor
+package. Below we use the `compounds()` function to extract small compound
+annotations from the database.
+
+```{r}
 cmps <- compounds(mb, columns = c("compound_id", "name", "formula",
                                   "exactmass", "inchikey"))
+head(cmps)
+```
 
-#' Selecting significant features
+MassBank (as most other small compound annotation databases) provide the (exact)
+molecular mass of each compound. Since almost all small compounds are neutral in
+their natural state they need to be first converted to *m/z* values to allow
+matching against the feature's *m/z*. To calculate an *m/z* from a neutral mass,
+we need to assume which ion (adduct) might be generated from the measured
+metabolites by the employed electro-spray ionization. In positive polarity, for
+human serum samples, the most common ions will be protonated (*[M+H]+*), sodium
+ions (*[M+Na]+*) or *[M+H-NH3]*) ions. To match the observed *m/z* values
+against reference values from these potential ions we use the `matchValues()`
+function from the `r Biocpkg("MetaboAnnotation")` package with the
+`Mass2MzParam` approach, that allows to specify the types of expected ions with
+its `adducts` parameter and the maximal allowed difference between the compared
+values using the `tolerance` and `ppm` parameters. Below we first prepare the
+data frame with the significant features, set up the parameters for the matching
+and perform the comparison of the query features against the reference database
+using the `matchValues()` function. With parameter `mzColname` we specify the
+name of the column in the query data frame that contains the *m/z* values.
+
+```{r}
+#' Prepare query data frame
 rowData(res)$feature_id <- rownames(rowData(res))
 res_sig <- res[rowData(res)$significant.CVD, ]
 
-#' Perform matching
+#' Setup parameters for the matching
 param <- Mass2MzParam(adducts = c("[M+H]+", "[M+Na]+", "[M+H-NH3]+"),
                       tolerance = 0, ppm = 5)
 
+#' Perform the matching.
 mtch <- matchValues(res_sig, cmps, param = param, mzColname = "mzmed")
 mtch
 ```
 
-Note above that we select for the latest update of the MassBank database when `
-computing `mb <- ah[["AH116166"]]`.
-The `Matched` object shows that 4 of our significant features that were matched
-to the MassBank database.
-
-Evaluating for each significant feature the hits to the database.
+The resulting `Matched` object shows that 4 of our 6 significant features could
+be matched to ions of compounds from the MassBank database. Below we extract the
+full result from the `Matched` object.
 
 ```{r}
-#' keep only features that have matches
-mtch <- mtch[unique(queryIndex(mtch))]
-
-#' Extracting the results and only best
+#' Extracting the results
 mtch_res <- matchedData(mtch, c("feature_id", "mzmed", "rtmed",
                                 "adduct", "ppm_error",
-                                "target_formula", "target_name", "target_inchikey"))
+                                "target_formula", "target_name",
+                                "target_inchikey"))
+mtch_res
+```
+
+Thus, in total `r sum(!is.na(mtch_res$ppm_error)))` ions of compounds in
+MassBank were matched to our significant features based on the specified
+tolerance settings. Many compounds, while having a different structure and thus
+function/chemical property, have an identical chemical formula and thus
+mass. Matching exclusively on the *m/z* of features will hence result in many
+potentially false positive hits and is thus considered to provide only low
+confidence annotation. An additional complication is that some annotation
+resources, like MassBank, being community maintained, contain a large amount of
+redundant information. To reduce redundancy in the result table we below iterate
+over the hits of a feature and keep only matches to unique compounds (identified
+by their INCHIKEY). The INCHI or INCHIKEY combine information from compound's
+chemical formula and structure, so while different compounds can share the same
+chemical formula, they should have a different structure and thus INCHI.
+
+```{r}
 rownames(mtch_res) <- NULL
 
 #' Keep only info on features that machted - create a utility function for that
 mtch_res <- split(mtch_res, mtch_res$feature_id) |>
     lapply(function(x) {
         lapply(split(x, x$target_inchikey), function(z) {
-            z[which.max(z$ppm_error), ]
-        }) |>
-            do.call(what = rbind)
+            z[which.min(z$ppm_error), ]
+        })
     }) |>
+    unlist(recursive = FALSE) |>
     do.call(what = rbind)
 
 #' Display the results
@@ -2565,103 +2601,126 @@ mtch_res |>
                  split.table = Inf)
 ```
 
-The table above shows the results of the annotation process. We can see that
-four of our significant features were matched to the MassBank database. The
-matches seem to be pretty accurate with low ppm errors. Although, reference
-compounds have, for the same feature, the same chemical formula, their names as
-well as their (reported) *exact mass* differs, leading to multiple hits per
-feature.
+The table above shows the results of the MS1-based annotation process. We can
+see that four of our significant features were matched to the MassBank
+database. The matches seem to be pretty accurate with low ppm errors. The
+deduplication performed above considerably reduced the number of hits for each
+feature, but the first still matches ions of a large number of compounds (all
+with the same chemical formula).
 
-Above we tried to reduce the number of these duplicated hit using the inchikey
-information. The inchi or inchikey combine info from the chemical formula and
-structure, so while different compounds can share the same chemical formula,
-they should have a different structure and thus inch However, this is not
-always possible and the user should be aware that the same compound can be
-reported multiple times in the database.
+Considering in addition retention times in the MS1-based annotation will
+increase, but requires additional (previous) knowledge and data such as
+recording of the retention time of the pure standard for a compound on the same
+LC setup.
+
+While being of low confidence, MS1-based annotation can provide first candidate
+annotations that could be confirmed or rejected by additional analyses.
+
 
 ## MS2 based annotation
 
-MS1 annotation is a fast and efficient method to annotate features and therfore
+MS1 annotation is a fast and efficient method to annotate features and therefore
 give a first insight into the compounds that are significantly different between
 the two study groups. However, it is not always the most accurate. MS2 data can
-provide a higher level of confidence in the annotation process. This is because
-MS2 data provides information on the fragmentation pattern of the compound,
-which can be used to identify the compound with higher confidence.
+provide a higher level of confidence in the annotation process as it provides,
+through the observed fragmentation pattern, information on the structure of the
+compound.
 
-In our analysis, we concluded that the significant features were exclusively
-detected in the CTR samples and were absent in the CVD samples. Consequently,
-we will utilize the MS2 data obtained from the CTR samples to annotate these
-significant features. While most experiments use QC (Quality Control) samples
-for this purpose, their usage can occasionally dilute the signal of interest.
-Given that we have recorded MS2 data in both study samples and QC samples, we
-can confidently rely on the CTR samples to ensure optimal signal strength,
-thereby facilitating the best possible matches.
+MS2 data can be generated through LC-MS/MS measurement in which MS2 spectra are
+recorded for ions either in a data dependent acquisition (DDA) or data
+independent acquisition (DIA) mode. Generally, it is advised to include some
+LC-MS/MS runs of e.g. QC samples or randomly selected study samples already
+during the acquisition of the MS1 data that is used for quantification of the
+signals. As an alternative, or in addition, a post-hoc LC-MS/MS acquisition can
+be performed to generate the MS2 data needed for annotation. For the present
+experiment, a separate LC-MS/MS measurement was conducted on QC samples and
+selected study samples to generate such data using an *inclusion list* of
+pre-selected ions. These represent features found to be significantly different
+between CVD and control samples in an initial analysis of the full
+experiment. We use a subset of this second LC-MS/MS data set to show how such
+data can be used for MS2-based annotation. In our differential abundance
+analysis we found features with significantly higher abundances in CTR
+samples. Consequently, we will utilize the MS2 data obtained from the CTR
+samples to annotate these significant features.
 
-jo: mention that we eventually should/could align the data sets first.
+Below we load the LC-MS/MS data from the experiment and restrict it to data
+acquired from the CTR sample.
 
-```{r echo=TRUE}
-#' Import run2 data
-path <- "C:/Users/plouail/OneDrive - Scientific Network South Tyrol/end-to-end_worflow/data/mzML_files/MS2/"
-filename <- list.files(path = path, pattern = "\\.mzML$")
-res_ms2 <- readMsExperiment(file.path(path, filename))
+```{r}
+#' Read the sample descriptions from an xlsx sheet
+pd <- read_xlsx("data/phenodata-lc-msms.xlsx") |>
+    as.data.frame()
+
+msms_data <- readMsExperiment(file.path(MZML_PATH, "/", pd$mzML_file),
+                              sampleData = pd)
+
+#' Restrict to LC-MS/MS data from the CTR sample
+msms_data <- msms_data[sampleData(msms_data)$phenotype == "CTR" &
+                       sampleData(msms_data)$ms_mode == "MSMS"]
 
 #' same filtering as run1
-res_ms2 <- filterRt(res_ms2, c(10, 240))
+msms_data <- filterRt(msms_data, c(10, 240))
+```
 
-#' add quick phenodata
-sampleData(res_ms2)$phenotype <- "CTR"
-sampleData(res_ms2)$frag_method <- c("CE20", "CE30", "CES")
+In total we have `r length(msms_data)` LC-MS/MS data files for the control
+sample, each with a different collision energy to fragment the ions.  Below we
+evaluate the number of MS1 and MS2 spectra for each of the files.
 
+```{r}
 #' check the number of spectra per ms level
-spectra(res_ms2) |>
+spectra(msms_data) |>
     msLevel() |>
-    split(fromFile(res_ms2)) |>
+    split(spectraSampleIndex(msms_data)) |>
     lapply(table) |>
     do.call(what = cbind)
 ```
 
-Here, we will set up the `Spectra` object for the second run containing
-MS2 data. The identical procedure will be applied to the database spectra. This
-preparation step efficiently filters the spectra data to retain only MS2 (using
-`filterMsLevel()`) spectra while eliminating spectra with only a single peak.
-Additionally, we will use `filterIntensity()` and `filterPrecursorPeaks()` to
-filter the MS2 spectra to retain only peaks with greater intensity that are
-below the precursor m/z value.
+We next extract the `Spectra` object with the MS data from the data object and
+assign a new spectra variable with the employed collision energy.
 
-The `Spectra` also has its own metadata that can be retrieve using
-`spectraData()` function. Here we will extract the fragmentation method used for
-each MS2 spectra.
+```{r}
+ms2_ctr <- spectra(msms_data)
+ms2_ctr$collision_energy <-
+    sampleData(msms_data)$fragmentation_mode[spectraSampleIndex(msms_data)]
+```
 
-```{r prep spectra object}
-# Remove low intensity peaks
+We next filter the MS data by first restricting to MS2 spectra and then removing
+mass peaks from each spectrum with an intensity that is lower than 5% of the
+highest intensity for that spectrum.
+
+```{r}
+#' Remove low intensity peaks
 low_int <- function(x, ...) {
     x > max(x, na.rm = TRUE) * 0.05
 }
 
-res_ms2 <- spectra(res_ms2)|>
-    filterMsLevel(2) |>
+ms2_ctr <- filterMsLevel(ms2_ctr, 2L) |>
     filterIntensity(intensity = low_int)
-
-#' remove peaks >= precursor m/z
-res_ms2 <- filterPrecursorPeaks(res_ms2, ppm = 50, mz = ">=")
-
-# Remove spectra that have one peak only
-res_ms2 <- res_ms2[lengths(res_ms2) > 1]
-
-#' add fragmentation data to `spectraData`
-res_ms2$frag_method <- regmatches(
-    dataOrigin(res_ms2),
-    regexpr("(CE20|CE30|CES)", dataOrigin(res_ms2)))
-table(res_ms2$frag_method)
-
-#' Extract spectra data from database
-ref_ms2 <- Spectra(mb)
-
-#' Do same filtering as for our spectra data
-ref_ms2 <- filterIntensity(ref_ms2, intensity = low_int)
-ref_ms2 <- filterPrecursorPeaks(ref_ms2, ppm = 50, mz = ">=")
-ref_ms2 <- ref_ms2[lengths(ref_ms2) > 1]
 ```
+
+We next remove all mass peaks with a *m/z* value greater or equal to the
+precursor *m/z* of the ion and finally restrict to spectra with at least two
+fragment peaks.
+
+```{r}
+ms2_ctr <- filterPrecursorPeaks(ms2_ctr, ppm = 50, mz = ">=")
+ms2_ctr <- ms2_ctr[lengths(ms2_ctr) > 1]
+```
+
+We next extract all fragment spectra from the MassBank database, restrict to
+positive polarity data (since also our experiment was acquired in positive
+polarity) and perform the same processing to the fragment spectra from the
+MassBank database.
+
+```{r prep spectra object}
+ms2_ref <- Spectra(mb) |>
+    filterPolarity(1L) |>
+    filterIntensity(intensity = low_int) |>
+    filterPrecursorPeaks(ppm = 50, mz = ">=")
+ms2_ref <- ms2_ref[lengths(ms2_ref) > 1]
+```
+
+LLLLLLL maybe first subset to spectra of features and then extract MassBank?
 
 Now that both the `Spectra` object for the second run and the database spectra
 have been prepared, we can proceed with the matching process. The goal is to
@@ -2790,6 +2849,14 @@ legend("topright", col = col_phenotype,
 #' are you fine with having one match at the end ? It's a nice story i guess
 ```
 
+## External tools or alternative annotation approaches
+
+Also, evaluating the isotope pattern of a full MS1 scan for a feature can
+provide information on element composition () and hence point to the likely
+chemical formula for a feature.
+
+- SIRIUS
+- GNPS molecular networking
 
 # Summary
 
