@@ -1,16 +1,19 @@
 ---
-title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry* and *xcms*"
+title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry* and
+  *xcms*"
 author:
-  - name: "Philippine Louail"
-    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
-  - name: "Anna Tagliaferri"
-    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
-  - name: "Vinicius Verri Hernandes"
-    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
-  - name: "Johannes Rainer"
-    affiliation: "Institute for Biomedicine, Eurac Research, Bolzano, Italy"
-output: html_document
+- name: Philippine Louail
+  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
+- name: Anna Tagliaferri
+  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
+- name: Vinicius Verri Hernandes
+  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
+- name: Johannes Rainer
+  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
 date: "2023-09-07"
+output:
+  word_document: default
+  html_document: default
 bibliography: references.bib
 ---
 
@@ -27,29 +30,27 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 Metabolomics provides a real-time view of the metabolic state of examined
 samples, with mass spectrometry serving as a key tool in deciphering intricate
 differences in metabolomes due to specific factors. In the context of
-metabolomic investigations, untargeted LC-MS/MS emerges as a powerful approach.
-This paper focuses on a dataset aimed at identifying differences in plasma
-metabolite levels between individuals suffering from a cardiovascular disease
-and healthy controls.
+metabolomic investigations, untargeted LC-MS/MS emerges as a powerful approach
+thanks to its versatility and resolution. This paper focuses on a dataset aimed 
+at identifying differences in plasma metabolite levels between individuals 
+suffering from a cardiovascular disease and healthy controls.
 
-Despite the potential insights offered by untargeted LC-MS/MS data, a
-significant challenge in the field lies in the generation of reproducible and
-scalable analysis workflows. Various software packages, also with convenient
-graphical user interfaces for the analysis of such data exist, but high variety
-of different chromatographic setups as well as MS acquisition modes and
-configurations used in untargeted metabolomics demands highly flexible and
-customizable software packages and analysis workflows [jo: the previous sentence
-needs rewriting - or maybe we remove it completely]. The power of R-based
-analysis workflows lies in their high customizability and adaptability to
-specific instrumental and experimental setups, but, while various specialized
-packages exist for individual analysis steps, their seamless integration and
-application to large cohort datasets remains elusive.  Addressing this gap, we
-present an innovative R workflow that leverages *xcms*, and packages of the
-*RforMassSpectrometry* environment to encompass all aspects of pre-processing
-and downstream analyses for LC-MS/MS datasets in a reproducible manner and allow
-an easy customization to generate data-set specific workflows. Our pipeline
-seamlessly integrates with Bioconductor packages, offering adaptability to
-diverse study designs and analysis requirements.
+Despite the potential insights offered by untargeted LC-MS/MS data, a 
+significant challenge in the field lies in the generation of reproducible and 
+scalable analysis workflows. This struggle is due to the previously mentioned 
+high versatility of the technique, which results in difficulty in having a 
+*one-size-fits-all* workflow and software that will adapt to all experimental 
+setups. The power of R-based analysis workflows lies in their high 
+customizability and adaptability to specific instrumental and experimental 
+setups; however, while various specialized packages exist for individual 
+analysis steps, their seamless integration and application to large cohort 
+datasets remain elusive.Addressing this gap, we present an innovative R 
+workflow that leverages *xcms*, and packages of the *RforMassSpectrometry* 
+environment to encompass all aspects of pre-processing and downstream analyses 
+for LC-MS/MS datasets in a reproducible manner and allow an easy customization 
+to generate data-set specific workflows. Our pipeline seamlessly integrates 
+with Bioconductor packages, offering adaptability to diverse study designs and 
+analysis requirements.
 
 # Keyword
 LC-MS/MS, reproducibility, workflow, xcms, R, normalization,
@@ -59,18 +60,19 @@ feature identification, Bioconductor,...
 
 LC-MS/MS is a powerful tool for metabolomics investigations, providing a
 comprehensive view of the metabolome. It enables the identification of
-a large number of metabolites and their relative abundance in biological samples. The high
-sensitivity and specificity of LC-MS/MS make it an indispensable tool for
-biomarker discovery and elucidating metabolic pathways. The untargeted approach
-is particularly useful for hypothesis-free investigations, allowing for the
-detection of unexpected metabolites and pathways. However, the analysis of
-LC-MS/MS data is complex and requires a series of preprocessing steps to
-extract meaningful information from the raw data. The main challenges are to
-deal with the lack of ground truth data, the high dimensionality of the data,
-and the presence of noise and artifacts. Moreover, due to different instrumental
-setups and used protocols the definition of a single *one-fits-all* workflow is
-impossible. Finally, while specialized software packages exist for each
-individual step during an analysis, their seamless integration remains elusive.
+a large number of metabolites and their relative abundance in biological
+samples. The high sensitivity and specificity of LC-MS/MS make it an 
+indispensable tool for biomarker discovery and elucidating metabolic pathways.
+The untargeted approach is particularly useful for hypothesis-free
+investigations, allowing for the detection of unexpected metabolites and
+pathways. However, the analysis of LC-MS/MS data is complex and requires a
+series of preprocessing steps to extract meaningful information from the raw
+data. The main challenges are to deal with the lack of ground truth data, the
+high dimensionality of the data, and the presence of noise and artifacts.
+Moreover, due to different instrumental setups and used protocols the
+definition of a single *one-fits-all* workflow is impossible. Finally, while
+specialized software packages exist for each individual step during an
+analysis, their seamless integration remains elusive.
 
 The *RforMassSpectrometry* initiative aims to implement an expandable, flexible
 infrastructure for the analysis of MS data, providing also a comprehensive
@@ -82,13 +84,12 @@ package ecosystem. We demonstrate how the various algorithms can be adapted to
 the particular data set and how various R packages can be seamlessly integrated
 to ensure efficient and reproducible processing. The present workflow covers all
 steps for LC-MS/MS data analysis, from preprocessing, data normalization,
-differential abundance analysis and annotation of the significant
+differential abundance analysis to the annotation of the significant
 *features*. Various options for visualizations as well as quality assessment are
 presented for all analysis steps.
 
 [jo: maybe we can have a table of all used R/Bioconductor packages and for what
 they were used]
-
 
 # Data description
 
@@ -99,14 +100,13 @@ identification/annotation of its significant features. The samples used here
 were randomly selected from a larger study for the identification of metabolites
 with differences in abundances between individuals suffering from a
 cardiovascular disease (CVD) and healthy controls (CTRL). The subset analyzed
-here comprises data for 3 CVD and 3 CTRL as well as four quality control (QC)
-samples. The QC samples represent a pool of serum samples from a large cohort
-and were repeatedly measured throughout the experiment to monitor stability of
-the signal.
+here comprises data for three CVD and three CTRL as well as four quality 
+control (QC) samples. The QC samples represent a pool of serum samples from a 
+large cohort and were repeatedly measured throughout the experiment to monitor 
+stability of the signal.
 
 The data and metadata for this workflow are accessible on the massive database
 under the ID: [ID].
-
 
 # Workflow description
 
@@ -114,8 +114,7 @@ The present workflow describes all steps for the analysis of an LC-MS/MS
 experiment, which includes the preprocessing of the raw data to generate the
 *abundance* matrix for the *features* in the various samples, followed by data
 normalization, differential abundance analysis and finally the annotation of
-features to metabolites. The packages are listed in table XXX [jo: maybe provide
-that info as a table]. Note that also alternative analysis options and R
+features to metabolites. Note that also alternative analysis options and R
 packages could be used for different steps and some examples are mentioned
 throughout the workflow.  [jo: I'll include some of these maybe later. It would
 be key to justify why this workflow is comprehensive]
@@ -123,22 +122,32 @@ be key to justify why this workflow is comprehensive]
 Our workflow is therefore based on the following dependencies:
 
 ```{r packages used, message=FALSE}
+## General bioconductor package
+library(Biobase)
+
+## Data Import and handling
+library(readxl)
 library(MsExperiment)
+library(SummarizedExperiment)
+
+## Preprocessing of LC-MS data
 library(xcms)
 library(Spectra)
-library(RColorBrewer)
-library(pander)
-library(readxl)
 library(MetaboCoreUtils)
-library(Biobase)
-library(MetaboAnnotation)
+
+## Statistical analysis
+library(limma) # differential abundance
+library(matrixStats) # summaries over matrices
+
+## Visualisation
+library(pander)
+library(RColorBrewer)
 library(pheatmap)
 library(vioplot)
 library(ggfortify)   # plot PCA
 library(gridExtra)   # to arrange multiple ggplots into single plots
-library(matrixStats) # summaries over matrices
-library(SummarizedExperiment)
-library(limma) # differential abundance
+
+## Annotation
 library(AnnotationHub) # Annotation resources
 library(CompoundDb)    # Access small compound annotation data.
 library(MetaboAnnotation) # Functionality for metabolite annotation.
@@ -150,8 +159,8 @@ The *mzML* files with the raw MS data are located within the *data/mzML* folder
 of this repository. [ideally, they should be added and then downloaded from
 MetaboLight].
 
-Data import from metaboloight first need to be extracted using the *isatabr*
-package. (hjere there I need to write an import command specific fro ISA-tab file.)
+Data import from metabolight first need to be extracted using the *isatabr*
+package. (here there I need to write an import command specific fro ISA-tab file.)
 
 ```{r import}
 #' read the sample descriptions from an xlsx sheet
@@ -179,9 +188,9 @@ the code below we use a *fork-based* parallel processing on unix system, and a
 #' Set up parallel processing using 2 cores
 if (.Platform$OS.type == "unix") {
     register(MulticoreParam(2))
-} else {
+    } else{
     register(SnowParam(2))
-}
+        }
 ```
 
 # Data organisation
@@ -251,7 +260,7 @@ spectra(data)
 ```
 
 We can also summarize the number of spectra and their respective MS level
-(extracted with the `msLevel()` function. The `fromFile()` function returns for
+(extracted with the `msLevel()` function). The `fromFile()` function returns for
 each spectrum the index of its sample (data file) and can thus be used to split
 the information (MS level in this case) by sample to further summarize using the
 base R `table()` function and combine the result into a matrix.
@@ -292,7 +301,6 @@ information is currently not as efficient and seamless as it is for spectral
 information. Work is underway to develop/improve the infrastructure for
 chromatographic data through a new `Chromatograms` object aimed to be as
 flexible and user-friendly as the `Spectra` object.
-
 
 # Data visualization and general quality assessment
 
@@ -402,7 +410,7 @@ extracting spectra or regions of interest for further examination. Here we will
 now look at how to extract information for specific spectrum from specific
 samples.
 
-```{r }
+```{r}
 #' Accessing a single spectrum - comparing with QC
 par(mfrow = c(1,2), mar = c(2, 2, 2, 2))
 spec1 <- spectra(data[1])[125]
@@ -497,8 +505,8 @@ the BPC.
 The final plot illustrates the BPC for each sample colored by phenotype,
 providing insights on the signal measured along the retention times of each sample. It
 reveals the points at which compounds eluted from the LC column. In essence, a
-BPC condenses the 3-dimensional LC-MS data (*m/z* by retention time by intensity)
-into 2 dimensions (retention time by intensity).
+BPC condenses the three-dimensional LC-MS data (*m/z* by retention time by intensity)
+into two dimensions (retention time by intensity).
 
 We can also here compare similarities of the BPCs in a heatmap. The retention
 times will however not be identical between different samples. Thus we *bin* the
@@ -782,9 +790,8 @@ in an EIC, the initial troubleshooting step should be to increase this
 range. Also, the signal-to-noise threshold `snthresh` should in general be
 reduced for peak detection in EICs, because within the small retention time
 range usually not enough signal is present to properly estimate the background
-noise. Finally, setting CentWave's advanced parameter `extendLengthMSW` to
-`TRUE` can help if chromatographic peak detection fails despite choosing
-apparently correct settings. [jo: maybe drop or reformulate that last sentence?]
+noise. Finally, in case of too few MS1 data points per peaks, setting CentWave's
+advanced parameter `extendLengthMSW` to `TRUE` can help with peak detection. 
 
 ```{r}
 #' Parameters adapted for chromatographic peak detection on EICs.
@@ -979,11 +986,6 @@ summaries that could be easily generated with base R commands.
 
 ## Retention time alignment
 
-[jo: I rewrote/reformulated most of the text here - I hope it's clear and
-understandable. I tried to formulate it for analysts without any pre-knowledge
-of xcms or LC-MS data analysis, also focusing more on the algorithms we use here
-instead of mentioning what else would be available.]
-
 Despite using the same chromatographic settings and conditions there will always
 be shifts in retention times between samples from an experiment. These will be
 generally small if samples are measured within the same batch/measurement run,
@@ -1011,10 +1013,6 @@ the same day. Still, small shifts can be observed, especially between 100 and
 hence definition of the LC-MS features), it is essential to minimize these
 differences in retention times.
 
-[jo: would maybe not discuss the different available algorithms, but just focus
-on the method used here. Info on the other algorithms would be available in the
-xcms tutorial and vignette.]
-
 In *xcms* retention time alignment can be performed using the `adjustRtime()`
 function and one of the available alignments algorithms that can be selected and
 configured using the respective parameter object. For this example we use the
@@ -1025,7 +1023,7 @@ match/group chromatographic peaks across samples from which the algorithm then
 selects the anchor peaks for the alignment.
 
 For the initial correspondence, we use the *PeakDensity* approach
-[smith_xcms:_2006] that groups chromatographic peaks with similar *m/z* and
+[@smith_xcms:_2006] that groups chromatographic peaks with similar *m/z* and
 retention time into LC-MS features. An LC-MS feature, or in short feature,
 represents signal from the same type of ion across all samples of a data
 set. The parameters for this algorithm, that can be configured using the
@@ -1233,8 +1231,8 @@ identify chromatographic peaks in each sample with an *m/z* and retention time
 close to the expected values for each internal standard. For this we use the
 `matchValues()` function from the `r Biocpkg("MetaboAnnotation")` package
 [@rainer_modular_2022] using the `MzRtParam` method to identify all
-chromatographic peaks with similar *m/z* (+/- 50ppm) and retention time (+/- 10
-seconds) to the internal standard's values. We perform this matching separate
+chromatographic peaks with similar *m/z* (+/- 50 ppm) and retention time (+/- 
+10 seconds) to the internal standard's values. We perform this matching separate
 for each sample and select for each internal standard, in each sample, using the
 `filterMatches()` and `SingleMatchParam`, the chromatographic peak with the
 highest intensity.
@@ -1264,7 +1262,6 @@ intern_standard_peaks <- lapply(seq_along(data), function(i) {
     mtch$target_peak_id
 }) |>
     do.call(what = cbind)
-
 ```
 
 We have now for each internal standard the ID of the chromatographic peak in
@@ -1310,7 +1307,7 @@ of an experiment and to group them into LC-MS *features*. In *xcms*, this step
 can be performed with the `groupChromPeaks()` function and one of the
 correspondence algorithms that can be selected and configured with their
 respective parameter object. In this example, we use the *PeakDensity* method
-[[smith_xcms:_2006]], that was already described in the previous section. Next
+[@smith_xcms:_2006], that was already described in the previous section. Next
 to the `binSize` and `ppm` parameters, proper configuration of parameter `bw` is
 crucial. Here we illustrate how sensible choices for this parameter's value can
 be made. We use below the `plotChromPeakDensity()` function to *simulate* a
@@ -1375,7 +1372,7 @@ that is larger than 0 to accommodate the higher measurement error of the
 instrument for larger *m/z* values. Finally, we set `minFraction = 0.75` hence
 defining features only if in at least 75% of samples of one of the sample groups
 a chromatographic peak was identified. For sample groups we use the information
-available in our `sampleData`'` `"phenotype"` column.
+available in our `sampleData`'s `"phenotype"` column.
 
 ```{r}
 #' Define the settings for the.
@@ -1688,7 +1685,7 @@ median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
 `r Biocpkg("preprocessCore")`.
 
-Generally, for LC-MS data, noise can be categorized into 3 main groups:
+Generally, for LC-MS data, noise can be categorized into three main groups:
 
 - Variances introduced by sample collection and initial processing, which can
   include differences in sample amounts. This type of bias is expected to be
@@ -1699,10 +1696,10 @@ Generally, for LC-MS data, noise can be categorized into 3 main groups:
 - Signal drifts along measurement of samples from an experiment. Reasons for
   such drifts can be related to aging of the instrumentation used (columns,
   detector), but also changes in metabolite abundances/characteristics within
-  the sample, such as oxydation or other modifications of the sample's
+  the sample, such as oxidation or other modifications of the sample's
   metabolites which are expected to affect samples measured later in a sample
   run more than those measured at the beginning. This bias can play a major role
-  in large experiements measured over a long time range and is usually
+  in large experiments measured over a long time range and is usually
   considered to affect individual metabolites (or metabolite groups)
   differently. For adjustment, moving average or linear regression-based
   approaches can be used. The latter can for example be performed using the
@@ -1714,6 +1711,8 @@ Generally, for LC-MS data, noise can be categorized into 3 main groups:
   specific batch of reagents. This noise is assumed to affect all samples in one
   batch in the same way and linear modeling-based approaches can be used to
   adjust for this.
+  
+[phili: should we add references for the above info ([@broadhurst_guidelines_2018])?]
 
 Unwanted variation can arise from various sources and is highly dependent on the
 experiment. Therefore, data normalization should be chosen carefully based on
@@ -1850,7 +1849,7 @@ amount of features detected. Additionally we observe that, on average, the
 signal distribution from the individual samples is very similar.
 
 An alternative way to evaluate differences in abundances between samples are
-*relative log abundance* (RLA) plots [de_livera_normalizing_2012]. An RLA value
+*relative log abundance* (RLA) plots [@de_livera_normalizing_2012]. An RLA value
 is the abundance of a feature in a sample relative to the median abundance of
 the same feature across multiple samples. We can discriminate between *within
 group* and *across group* RLAs, depending whether the abundance is compared
@@ -1996,7 +1995,6 @@ groups and compare the behavior between groups.
 
 ### Principal Component Analysis
 
-
 ```{r fig.width=7, include=TRUE}
 #' Data before
 vals_st <- cbind(vals, phenotype = res$phenotype)
@@ -2036,7 +2034,7 @@ grid.arrange(pca_raw, pca_adj, ncol = 2)
 
 The PCA plots above show that the normalization process has not changed the
 overall structure of the data. The separation between the study and QC samples
-remains the same. This is an expected results as normalisation should not
+remains the same. This is an expected results as normalization should not
 correct for biological variance and only technical.
 
 
@@ -2044,7 +2042,6 @@ correct for biological variance and only technical.
 
 We compare the RLA plots before and after between-sample normalization to
 evaluate its impact on the data.
-
 
 ```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
 par(mfrow = c(2, 1), mar = c(3.5, 4.5, 3, 1))
@@ -2117,10 +2114,9 @@ for both raw and normalized data. As anticipated, the CV values for the quality
 controls (QCs), which reflect technical variance, are lower compared to those
 for the study samples, which include both technical and biological
 variance. Overall, minimal disparity exists between the raw and normalized data,
-which is a positive indication that the normalization process hasn't introduced
+which is a positive indication that the normalization process has not introduced
 bias into the dataset, but also reflects the little differences in average
 abundances between sample in the raw data.
-
 
 ```{r}
 save(data, file = "data_afternorm.RData")
@@ -2128,7 +2124,7 @@ save(res, file = "SumExp_afternorm.RData")
 ```
 
 
-### Conclusion
+### Conclusion on normalization
 
 The overall conclusion of the normalization process is that very little variance
 was present from the beginning, normalization was however was able to
@@ -2203,7 +2199,7 @@ for pre-filtering, on the basis that they represent similar bio-fluids to our
 study samples, and thus, we anticipate observing relatively similar metabolites
 affected by similar measurement biases.
 
-We therefore evaluate the *dispertion ratio* (Dratio) [@broadhurst_guidelines_2018] for all features in the data set. Using the
+We therefore evaluate the *dispersion ratio* (Dratio) [@broadhurst_guidelines_2018] for all features in the data set. Using the
 same function as above but this time with the `DratioFilter` parameter. More
 filter exist for this function and we invite the user to explore them as to
 decide what is best for their dataset.
@@ -2215,6 +2211,8 @@ filter_dratio <- DratioFilter(threshold = 0.4,
                               studyIndex = res$phenotype != "QC",
                               mad = TRUE)
 res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
+
+#' try using using the norm (filled) and see tht would be better. 
 
 #' Phili: i think you advised that we used the dratio filter only, but i am
 #'struggling to justify it in a proper way below, as we do expect a high degree
@@ -2287,6 +2285,7 @@ difference in abundances between the CVD or CTR study group.
 Before performing the tests we evaluate similarities between study samples using
 a PCA (after excluding the QC samples to avoid them influencing the results).
 
+
 ```{r}
 col_sample <- col_phenotype[res$phenotype]
 
@@ -2337,6 +2336,9 @@ model procedure.
 
 ```{r}
 #' Define the linear model to be applied to the data
+p.cut <- 0.05     # cut-off for significance.
+m.cut <- 0.5      # cut-off for log2 fold change
+
 age <- res$age
 phenotype <- factor(res$phenotype)
 design <- model.matrix(~ phenotype + age)
@@ -2509,7 +2511,6 @@ ah <- AnnotationHub()
 query(ah, "MassBank")
 #' Load one MAssBank release
 mb <- ah[["AH116166"]]
-
 ```
 
 The MassBank data is provided as a self-contained SQLite database and data can
@@ -2652,12 +2653,10 @@ acquired from the CTR sample.
 pd <- read_xlsx("data/phenodata-lc-msms.xlsx") |>
     as.data.frame()
 
+pd <- pd[pd$phenotype == "CTR" & pd$ms_mode == "MSMS", ]
+
 msms_data <- readMsExperiment(file.path(MZML_PATH, "/", pd$mzML_file),
                               sampleData = pd)
-
-#' Restrict to LC-MS/MS data from the CTR sample
-msms_data <- msms_data[sampleData(msms_data)$phenotype == "CTR" &
-                       sampleData(msms_data)$ms_mode == "MSMS"]
 
 #' Filter the data to the same RT range as the LC-MS run
 msms_data <- filterRt(msms_data, c(10, 240))
@@ -2683,7 +2682,7 @@ might be very low. With this setting, however, most of the recorded MS2 spectra
 will however represent only noise. The plot below shows the location of
 precursor ions in the *m/z* - retention time plane for the 3 files
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 #' jo: this requires devel xcms
 plotPrecursorIons(msms_data)
 ```
