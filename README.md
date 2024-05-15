@@ -6,7 +6,7 @@ Message for co-authors
 -  Packages: you can copy/paste the code down here to install the bioconductor 
 packages needed for the analysis. If at any point when running the code you get 
 an error message that a function cannot be found tell me and I will help.
-
+```{r}
 BiocManager::install("rformassspectrometry/Spectra")
 BiocManager::install("sneumann/xcms")
 BiocManager::install("RforMassSpectrometry/ProtGenerics")
@@ -19,6 +19,7 @@ BiocManager::install("RforMassSpectrometry/MetaboAnnotation")
 BiocManager::install("RforMassSpectrometry/MsExperiment")
 BiocManager::install("RforMassSpectrometry/MsBackendSql") # no need for now but maybe later
 BiocManager::install("RforMassSpectrometry/SummarizedExperiment")
+```
 
 The other packages are part of CRAN so should be easy to install.
 
@@ -36,7 +37,7 @@ you do  the pull request.
 are aiming for:
 [url](https://f1000research.com/articles/5-2122)
 
-Don't hesitate to contact me or johannesifyou have technical problems
+Don't hesitate to contact me or johannes if you have technical problems
 
 Good reading and thanks again!
 
