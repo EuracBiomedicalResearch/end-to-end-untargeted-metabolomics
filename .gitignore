@@ -12,3 +12,7 @@ images/
 *.sqlite
 *.pptx
 Norm_end_to_end_full(for_me).Rmd
+*.R
+Norm_end_to_end.Rmd
+*.docx
+
