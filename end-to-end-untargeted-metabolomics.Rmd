@@ -18,11 +18,25 @@ bibliography: references.bib
 ---
 
 ```{r style, warning=FALSE, include=FALSE, results='hide'}
-library("BiocStyle")
-library("knitr")
-library("rmarkdown")
-opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
-               cache = FALSE)
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install(c("remotes",
+  "rformassspectrometry/Spectra",
+  "sneumann/xcms",
+  "RforMassSpectrometry/ProtGenerics",
+  "RforMassSpectrometry/MsCoreUtils",
+  "RforMassSpectrometry/Spectra",
+  "MSnbase", 
+  "RforMassSpectrometry/MetaboCoreUtils",
+  "RforMassSpectrometry/CompoundDb",
+  "RforMassSpectrometry/MetaboAnnotation",
+  "RforMassSpectrometry/MsExperiment",
+  "RforMassSpectrometry/MsBackendSql",
+  "SummarizedExperiment",
+  "BiocStyle"
+))
+
 ```
 
 # Abstract
@@ -159,6 +173,8 @@ The *mzML* files with the raw MS data are located within the *data/mzML* folder
 of this repository. [ideally, they should be added and then downloaded from
 MetaboLight].
 
+Note that not different equipments will generate different files extensions, so a conversion step might be needed before, although it doesnt apply to this dataset. Several tools can be used to convert files to .mzML format, such as ProteoWizard`s MSConvert
+
 Data import from metabolight first need to be extracted using the *isatabr*
 package. (here there I need to write an import command specific fro ISA-tab file.)
 
@@ -251,7 +267,7 @@ and can be accessed using `spectra()` function. Each element in this object is a
 spectrum - they are organised linearly and are all combined in the same
 `Spectra` object one after the other (ordered by retention time and samples).
 Below we access the data set's `Spectra` object which will summarize its
-available information available and provide, among other, the total number of
+available information and provide, among other, the total number of
 spectra of the data set.
 
 ```{r}
@@ -263,7 +279,7 @@ We can also summarize the number of spectra and their respective MS level
 (extracted with the `msLevel()` function). The `fromFile()` function returns for
 each spectrum the index of its sample (data file) and can thus be used to split
 the information (MS level in this case) by sample to further summarize using the
-base R `table()` function and combine the result into a matrix.
+base R `table()` function and combine the result into a matrix. Note that this is simply the number of spectra acquired at each run, and not the number of spectral features in each sample, thus, they have all the same values.
 
 ```{r}
 #' Count the number of spectra with a specific MS level per file.
@@ -348,6 +364,8 @@ set the `processingChunkSize()` parameter of the `MsExperiment` object to a
 finite value (default is `Inf`) which will cause the data to be processed (and
 loaded into memory) in chunks of `processingChunkSize()` spectra. This can
 reduce memory demand and speed up the process.
+
+[Dan: Does the bin function also uses the maximum intensity of the binned spectra, or does it averages it? Also, at the plots below there`s a RT information as a heading fore each plot. Are those plots the BPS of the whole data or the BPC of RT=0.3?]
 
 ```{r}
 #' Setting the chunksize
@@ -452,6 +470,40 @@ rtime(spec2)
 
 #' Checking its m/z
 mz(spec2)
+
+#[Dan: If one want to delve in more details, maybe would be useful to have such values in a table form, for both spectra?]
+
+# Define a function to generate the table for a given spectrum
+generate_table <- function(spec) {
+  # Extract intensity, retention time, and m/z values
+  intensity_values <- intensity(spec)
+  mz_values <- mz(spec)
+  
+  # Filter data based on m/z between 50 and 200
+  idx <- which(mz_values >= 50 & mz_values <= 200)
+  
+  # Subset the values based on the filtered indices
+  filtered_intensity <- intensity_values[idx]
+  filtered_mz <- mz_values[idx]
+  
+  # Create a data frame combining these filtered values
+  combined_table <- data.frame(
+    Intensity = unlist(filtered_intensity),
+    MZ = unlist(filtered_mz)
+  )
+  
+  # Return the combined table
+  return(combined_table)
+}
+
+# Generate table for spec1
+print("Table for spec1:")
+print(generate_table(spec1))
+
+# Generate table for spec2
+print("Table for spec2:")
+print(generate_table(spec2))
+
 ```
 
 
