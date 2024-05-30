@@ -1,15 +1,6 @@
 ---
-title: "End-to-end workflow for LC-MS/MS analysis using *RforMassSpectrometry* and
-  *xcms*"
-author:
-- name: Philippine Louail
-  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
-- name: Anna Tagliaferri
-  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
-- name: Vinicius Verri Hernandes
-  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
-- name: Johannes Rainer
-  affiliation: Institute for Biomedicine, Eurac Research, Bolzano, Italy
+title: "A Complete End-to-End Workflow for untargeted LC-MS/MS Metabolomics Data Analysis in R"
+author: "Philippine Louail, Anna Tagliaferri, Vinicius Verri Hernandes, Daniel M. S. Silva, Johannes Rainer"
 date: "2023-09-07"
 output:
   word_document: default
@@ -18,25 +9,11 @@ bibliography: references.bib
 ---
 
 ```{r style, warning=FALSE, include=FALSE, results='hide'}
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install(c("remotes",
-  "rformassspectrometry/Spectra",
-  "sneumann/xcms",
-  "RforMassSpectrometry/ProtGenerics",
-  "RforMassSpectrometry/MsCoreUtils",
-  "RforMassSpectrometry/Spectra",
-  "MSnbase", 
-  "RforMassSpectrometry/MetaboCoreUtils",
-  "RforMassSpectrometry/CompoundDb",
-  "RforMassSpectrometry/MetaboAnnotation",
-  "RforMassSpectrometry/MsExperiment",
-  "RforMassSpectrometry/MsBackendSql",
-  "SummarizedExperiment",
-  "BiocStyle"
-))
-
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE)
 ```
 
 # Abstract
@@ -101,9 +78,6 @@ steps for LC-MS/MS data analysis, from preprocessing, data normalization,
 differential abundance analysis to the annotation of the significant
 *features*. Various options for visualizations as well as quality assessment are
 presented for all analysis steps.
-
-[jo: maybe we can have a table of all used R/Bioconductor packages and for what
-they were used]
 
 # Data description
 
@@ -173,7 +147,12 @@ The *mzML* files with the raw MS data are located within the *data/mzML* folder
 of this repository. [ideally, they should be added and then downloaded from
 MetaboLight].
 
-Note that not different equipments will generate different files extensions, so a conversion step might be needed before, although it doesnt apply to this dataset. Several tools can be used to convert files to .mzML format, such as ProteoWizard`s MSConvert
+Note that different equipment will generate various file extensions, so a 
+conversion step might be needed beforehand, though it doesn't apply to this
+dataset. The Spectra package supports a variety of ways to store and retrieve
+mass spec data, including mzML, mzXML, CDF files, simple flat files, or
+database systems. If necessary, several tools, such as ProteoWizard's MSConvert,
+can be used to convert files to the .mzML format (add reference).
 
 Data import from metabolight first need to be extracted using the *isatabr*
 package. (here there I need to write an import command specific fro ISA-tab file.)
@@ -226,7 +205,7 @@ extract this data and use the *pander* package to render and show this
 information in Table 1 below. Throughout the document we use the R pipe operator
 (`|>`) to avoid nested function calls and hence improve code readability.
 
-```{r phenodata, echo=FALSE}
+```{r phenodata, echo=FALSE, results='asis'}
 #' Extract selected columns from the sample data and create a table
 sampleData(data)[, c("mzML_file", "injection_index", "phenotype",
                      "sample_name", "age")] |>
@@ -279,7 +258,9 @@ We can also summarize the number of spectra and their respective MS level
 (extracted with the `msLevel()` function). The `fromFile()` function returns for
 each spectrum the index of its sample (data file) and can thus be used to split
 the information (MS level in this case) by sample to further summarize using the
-base R `table()` function and combine the result into a matrix. Note that this is simply the number of spectra acquired at each run, and not the number of spectral features in each sample, thus, they have all the same values.
+base R `table()` function and combine the result into a matrix. Note that this 
+is the number of spectra acquired at each run, and not the number of 
+spectral features in each sample.
 
 ```{r}
 #' Count the number of spectra with a specific MS level per file.
@@ -365,8 +346,6 @@ finite value (default is `Inf`) which will cause the data to be processed (and
 loaded into memory) in chunks of `processingChunkSize()` spectra. This can
 reduce memory demand and speed up the process.
 
-[Dan: Does the bin function also uses the maximum intensity of the binned spectra, or does it averages it? Also, at the plots below there`s a RT information as a heading fore each plot. Are those plots the BPS of the whole data or the BPC of RT=0.3?]
-
 ```{r}
 #' Setting the chunksize
 chunksize <- 1000
@@ -374,8 +353,9 @@ processingChunkSize(spectra(data)) <- chunksize
 ```
 
 We can now generate BPS for each sample and `plot()` them.
+[Phili: I think there is a bug in the BPS titles below no? ]
 
-```{r bps, echo=TRUE, fig.width = 12, fig.height = 7, fig.cap = "Base peak spectra for the 10 samples of the experiment."}
+```{r bps, fig.width = 12, fig.height = 7, fig.cap = "Base peak spectra for the 10 samples of the experiment."}
 #' Combining all spectra per file into a single spectrum
 bps <- spectra(data) |>
     bin(binSize = 0.01) |>
@@ -383,7 +363,7 @@ bps <- spectra(data) |>
 
 #' Plot the base peak spectra
 par(mar = c(2, 1, 1, 1))
-plotSpectra(bps)
+plotSpectra(bps, main= "")
 ```
 
 The Base Peak Spectra (BPS) reveal the most prevalent ions present in each of
@@ -402,7 +382,7 @@ function to calculate pairwise similarities between all BPS and use then the
 `pheatmap()` function from the *pheatmap* package to cluster and visualize this
 result.
 
-```{r compare-spectra, echo=TRUE}
+```{r compare-spectra}
 #' Calculate similarities between BPS
 sim_matrix <- compareSpectra(bps)
 
@@ -461,7 +441,7 @@ The CTR spectrum above exhibits significant peaks around an *m/z* of 150 - 200
 that have a much lower intensity in the CVD sample. To delve into more details
 about this specific spectrum, a wide range of functions can be employed:
 
-```{r}
+```{r results='asis'}
 #' Checking its intensity
 intensity(spec2)
 
@@ -471,39 +451,14 @@ rtime(spec2)
 #' Checking its m/z
 mz(spec2)
 
-#[Dan: If one want to delve in more details, maybe would be useful to have such values in a table form, for both spectra?]
+#' Filtering for a specific  m/z range and viewing in a tabular format
+filt_spec <- filterMzRange(spec2,c(50,200))
 
-# Define a function to generate the table for a given spectrum
-generate_table <- function(spec) {
-  # Extract intensity, retention time, and m/z values
-  intensity_values <- intensity(spec)
-  mz_values <- mz(spec)
-  
-  # Filter data based on m/z between 50 and 200
-  idx <- which(mz_values >= 50 & mz_values <= 200)
-  
-  # Subset the values based on the filtered indices
-  filtered_intensity <- intensity_values[idx]
-  filtered_mz <- mz_values[idx]
-  
-  # Create a data frame combining these filtered values
-  combined_table <- data.frame(
-    Intensity = unlist(filtered_intensity),
-    MZ = unlist(filtered_mz)
-  )
-  
-  # Return the combined table
-  return(combined_table)
-}
-
-# Generate table for spec1
-print("Table for spec1:")
-print(generate_table(spec1))
-
-# Generate table for spec2
-print("Table for spec2:")
-print(generate_table(spec2))
-
+data.frame(intensity = unlist(intensity(filt_spec)),
+           mz = unlist(mz(filt_spec))) |>
+  head() |>
+  pandoc.table(style = "rmarkdown", caption = "Table 2. Intensity and m/z 
+               values of the 125th spectrum of one CTR sample.")
 ```
 
 
@@ -638,7 +593,7 @@ cases where internal standards are not available, commonly present ions in the
 sample matrix can serve as suitable alternatives. Ideally, these compounds
 should be distributed across the entire retention time range of the experiment.
 
-```{r EIC extract for internal standard}
+```{r EIC extract for internal standard, results='asis'}
 #' Load our list of standard
 intern_standard <- read.delim("intern_standard_list.txt")
 
@@ -656,11 +611,11 @@ fData(eic_is)$abbreviation <- intern_standard$abbreviation
 rownames(eic_is) <- intern_standard$abbreviation
 
 #' Summary of IS information
-cpt <- paste("Internal standard list with respective m/z and expected",
+cpt <- paste("Table 3.Internal standard list with respective m/z and expected",
              "retention time [s].")
 fData(eic_is)[, c("name", "mz", "rt")] |>
   as.data.frame() |>
-  pandoc.table(style = "rmarkdown", caption = cpt, split.table = Inf)
+  pandoc.table(style = "rmarkdown", caption = cpt)
 ```
 
 We below plot the EICs for isotope labeled cystine and methionine.
@@ -740,21 +695,13 @@ The initial preprocessing step involves detecting of intensity peaks along the
 retention time axis, the so called *chromatographic peaks*. To achieve this, we
 employ the `findChromPeaks()` function within *xcms*. This function supports
 various algorithms for peak detection, which can be selected and configured with
-their respective parameter objects, with notable options including:
+their respective parameter objects. 
 
-- `MatchedFilterParam`: Implements peak detection as described in the original
-  xcms article [@smith_xcms:_2006].
-
-- `CentWaveParam`: Utilizes continuous wavelet transformation (CWT)-based peak
-  detection [@tautenhahn_highly_2008].
-
-- `MassifquantParam`: Employs a Kalman filter-based peak detection
-  [@conley_massifquant:_2014].
-
-The preferred algorithm, in this case, is *CentWave*, known for its
-effectiveness in handling non-Gaussian shaped chromatographic peaks or peaks
-with different retention time widths, commonly encountered in HILIC
-separation.
+The preferred algorithm in this case, is *CentWave*,it utilizes continuous 
+wavelet transformation (CWT)-based peak detection [@tautenhahn_highly_2008].This
+method is known for its effectiveness in handling non-Gaussian shaped
+chromatographic peaks or peaks with varying retention time widths, which
+are commonly encountered in HILIC separations.
 
 Below we apply the CentWave algorithm with its default settings on the extracted
 ion chromatogram for cystine and methionine ions and evaluate its results.
@@ -762,6 +709,8 @@ ion chromatogram for cystine and methionine ions and evaluate its results.
 ```{r Default centwave param test}
 #' Use default Centwave parameter
 param <- CentWaveParam()
+
+param
 
 #' Evaluate for Cystine
 cystine_test <- findChromPeaks(eic_cystine, param = param)
@@ -884,12 +833,16 @@ legend("topright", col = col_phenotype,
 Our custom settings seem thus to be suitable for our dataset. We now proceed and
 apply them to the entire dataset, extracting EICs again for the same ions to
 evaluate and confirm that chromatographic peak detection worked as
-expected. Note that we change the value for parameter `snthresh` to its default,
-because, as mentioned above, background noise estimation is more reliable when
-performed on the full data set. Parameter `chunkSize` of `findChromPeaks()`
-defines the number of data files that are loaded into memory and processed
-simultaneously. This parameter thus allows to fine-tune the memory demand as
-well as performance of the chromatographic peak detection step.
+expected. Note:
+
+- We change the value for parameter `snthresh` to its default,
+  because, as mentioned above, background noise estimation is more reliable when
+  performed on the full data set. 
+
+- Parameter `chunkSize` of `findChromPeaks()` defines the number of data files
+  that are loaded into memory and processed simultaneously. This parameter thus
+  allows to fine-tune the memory demand as well as performance of the
+  chromatographic peak detection step.
 
 ```{r run find chrompeak on entire dataset}
 #' Using the same settings, but with default snthresh
@@ -958,21 +911,24 @@ plot(eics)
 In both cases the signal presumably from a single type of ion was split into two
 separate chromatographic peaks (indicated by the vertical line). The
 `MergeNeigboringPeaksParam` allows to combine such split peaks. The parameters
-for this algorithm are `expandMz`, `expandRt` and `minProp`. `expandMz` and
-`expandRt` define which chromatographic peaks should be evaluated for merging
-and `minProp` is used to determine whether candidates are actually merged:
-chromatographic peaks with overlapping *m/z* ranges (expanded on each side by
-`expandMz`) and with a distance tail to head in retention time dimension that is
-less than `2 * expandRt` and for which the signal between them is higher than
-`minProp` of the apex intensity of the chromatographic peak with the lower
-intensity are merged.
+for this algorithm are defined below:
 
-Parameter `expandRt` is usually set to approximately half the size of the
-average retention time width used for chromatographic peak detection (in this
-case 2.5 seconds). Parameter `expandMz` is suggested to be kept relatively small
-(here at 0.0015) to prevent the merging of isotopes. Also, values for `minProp`
-should not be too small to avoid merging of closely co-eluting ions such as
-isomers. We test these settings below on the EICs with the split peaks.
+- `expandMz`and `expandRt`: define which chromatographic peaks should be
+evaluated for merging.
+    - `expandMz`: Suggested to be kept relatively small (here at 0.0015) to
+    prevent the merging of isotopes.
+    - `expandRt`: Usually set to approximately half the size of the average
+    retention time width used for chromatographic peak detection (in this case, 
+    2.5 seconds). 
+- `minProp`: Used to determine whether candidates are actually merged.
+  Chromatographic peaks with overlapping *m/z* ranges (expanded on each side by
+  `expandMz`) and with a tail-to-head distance in the retention time dimension
+  that is less than `2 * expandRt`, and for which the signal between them is
+  higher than `minProp` of the apex intensity of the chromatographic peak with
+  the lower intensity, are merged. Values for this parameter should not be too 
+  small to avoid merging closely co-eluting ions, such as isomers. 
+
+We test these settings below on the EICs with the split peaks.
 
 ```{r test merging}
 #' set up the parameter
@@ -1025,7 +981,7 @@ data.frame(sample_name = sampleData(data)$sample_name,
            peak_count = as.integer(table(chromPeaks(data)[, "sample"]))) |>
     pandoc.table(
         style = "rmarkdown",
-        caption = "Samples and number of identified chromatographic peaks.")
+        caption = "Table 4.Samples and number of identified chromatographic peaks.")
 ```
 
 About the same number of chromatographic peaks was identified in the various
@@ -1047,7 +1003,7 @@ time period.
 Below we extract base peak chromatograms from the study's QC samples and plot
 them.
 
-```{r echo=FALSE}
+```{r}
 #' Get QC samples
 QC_samples <- sampleData(data)$phenotype == "QC"
 
@@ -1080,7 +1036,9 @@ retention time into LC-MS features. An LC-MS feature, or in short feature,
 represents signal from the same type of ion across all samples of a data
 set. The parameters for this algorithm, that can be configured using the
 `PeakDensityParam` object, are `sampleGroups`, `minFraction`, `binSize`, `ppm`
-and `bw`. `binSize`, `ppm` and `bw` allow to specify how similar the
+and `bw`. 
+
+- `binSize`, `ppm` and `bw` allow to specify how similar the
 chromatographic peaks' *m/z* and retention time values need to be to consider
 them for grouping into a feature. Here `binSize` and `ppm` define the required
 similarity of *m/z* values. Within each *m/z* bin (defined by `binSize` and
@@ -1373,6 +1331,8 @@ panel.
 #' Default parameter for the grouping and apply them to the test ions BPC
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype, bw = 30)
 
+param
+
 plotChromPeakDensity(
     eic_cystine, param = param,
     col = paste0(col_sample, "80"),
@@ -1415,16 +1375,20 @@ plotChromPeakDensity(eic_met, param = param,
 ```
 
 We can observe that the peaks are now grouped more accurately into a single
-feature for each test ion. The other important parameters are `binSize` and
-`ppm` which allow to configure the required similarity of *m/z* values of the
-chromatographic peaks to consider them for grouping. Our data was generated on a
-high resolution MS instrument and we thus select a low value for
-`binSize`. Also, for TOF instruments it is suggested to use a value for `ppm`
-that is larger than 0 to accommodate the higher measurement error of the
-instrument for larger *m/z* values. Finally, we set `minFraction = 0.75` hence
-defining features only if in at least 75% of samples of one of the sample groups
-a chromatographic peak was identified. For sample groups we use the information
-available in our `sampleData`'s `"phenotype"` column.
+feature for each test ion. The other important parameters are:
+
+- `binSize` and `ppm`: Allow configuring the required similarity of *m/z*
+  values of the chromatographic peaks to consider them for grouping.
+    - `binsize`: Our data was generated on a high resolution MS instrument, thus
+    we select a low value for this paramter
+    - `ppm`: For TOF instruments, it is suggested to use a value for `ppm`
+    larger than 0 to accommodate the higher measurement error of the instrument
+    for larger *m/z* values. 
+    - `minFraction`: We set it to `minFraction = 0.75`, hence defining features
+    only if a chromatographic peak was identified in at least 75% of the
+    samples of one of the sample groups.
+    - `sampleGroups`: We use the information available in our `sampleData`'s 
+    `"phenotype"` column.
 
 ```{r}
 #' Define the settings for the.
@@ -1460,6 +1424,22 @@ plotChromPeakDensity(
 Indeed, signal from the two different ions were now grouped into separate
 features. Generally, correspondence results should be evaluated on more such
 extracted chromatograms.
+
+Another interesting information to  look a the the distribution of these features
+along the retention time axis.
+
+```{r results='asis'}
+# Bin features per RT slices
+vc <- featureDefinitions(data)$rtmed 
+breaks <- seq(0, max(vc, na.rm = TRUE) + 1, length.out = 15) |> 
+    round(0)
+cuts <- cut(vc, breaks = breaks, include.lowest = TRUE)
+
+table(cuts) |> 
+  pandoc.table(
+      style = "rmarkdown",
+      caption = "Table 5.Distribution of features along the retention time axis (in seconds.")
+```
 
 The results from the correspondence analysis are now stored, along with the
 results from the other preprocessing steps, within our `XcmsExperiment` result
@@ -1625,7 +1605,7 @@ intercept of `r round(coef(l)[1], 2)`. This indicates that the filled-in signal
 is on average `r round(coef(l)[2], 2)` times higher than the detected signal.
 
 
-## Preprocessing result
+## Preprocessing results
 
 The final results of the LC-MS data preprocessing are stored within the
 `XcmsExperiment` object. This includes the identified chromatographic peaks, the
@@ -1735,9 +1715,12 @@ After preprocessing, data normalization or scaling might needed to be applied to
 remove any technical variances from the data. While simple approaches like
 median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
-`r Biocpkg("preprocessCore")`.
+`r Biocpkg("preprocessCore")`. The Comprehensive workflow "Notame" also propose
+a very interesting normalization approach adaptable and scalable to the user
+dataset [@metabo10040135].
 
-Generally, for LC-MS data, noise can be categorized into three main groups:
+Generally, for LC-MS data, noise can be categorized into three main
+groups[@broadhurst_guidelines_2018]:
 
 - Variances introduced by sample collection and initial processing, which can
   include differences in sample amounts. This type of bias is expected to be
@@ -1763,8 +1746,6 @@ Generally, for LC-MS data, noise can be categorized into three main groups:
   specific batch of reagents. This noise is assumed to affect all samples in one
   batch in the same way and linear modeling-based approaches can be used to
   adjust for this.
-  
-[phili: should we add references for the above info ([@broadhurst_guidelines_2018])?]
 
 Unwanted variation can arise from various sources and is highly dependent on the
 experiment. Therefore, data normalization should be chosen carefully based on
@@ -1957,8 +1938,6 @@ contain the *m/z* and retention time values on which to match entities.
 We then
 filter these *matches* to only keep IS that match with a single feature using
 the `filterMatches()` function in combination with `SingleMatchParam`.
-
-[jo: original code selected the feature with closest RT, not the single one.]
 
 ```{r include=TRUE}
 # Do we keep IS in normalisation ? Does not give much info... Would simplify a bit
@@ -2156,7 +2135,7 @@ res_df <- data.frame(
     Study_norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE)
 )
 
-cpt <- paste0("Distribution of RSD values across samples for the raw and ",
+cpt <- paste0("Table 6.Distribution of RSD values across samples for the raw and ",
               "normalized data.")
 pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
@@ -2224,16 +2203,19 @@ This ensures the statistical tests performed later on the study samples being
 performed on *reliable* signal. Also, with this filter we remove features that
 were mostly detected in QC samples, but not the study samples. Such filter can
 be performed with `filterFeatures()` function from the `r Biocpkg("xcms")`
-package with the `PercentMissingFilter` setting. Parameter `threshold` of this
-filter defines the maximal acceptable percentage of samples with missing
-value(s) in at least one of the sample groups defined by parameter `f`. To
-consider detected chromatographic peaks per sample, we apply the filter on the
-`"raw"` assay of our result object, that contains abundance values only for
-detected chromatographic peaks (prior gap-filling). By replacing the `"QC"`
-sample group with `NA` in parameter `f` we exclude the QC samples from the
-evaluation and consider only the study samples. With `threshold = 40` we keep
-only features for which a peak was detected in 2 out of the 3 samples in one of
-the sample groups.
+package with the `PercentMissingFilter` setting. The parameters of this filer:
+
+- `threshold`: defines the maximal acceptable percentage of samples with missing
+  value(s) in at least one of the sample groups defined by parameter `f`.
+- `f`: a factor defining the sample groups. By replacing the `"QC"` sample group
+  with `NA` in parameter `f` we exclude the QC samples from the evaluation and 
+  consider only the study samples. With `threshold = 40` we keep only features
+  for which a peak was detected in 2 out of the 3 samples in one of the sample
+  groups.
+
+To consider detected chromatographic peaks per sample, we apply the filter on 
+the`"raw"` assay of our result object, that contains abundance values only for
+detected chromatographic peaks (prior gap-filling). 
 
 ```{r}
 #' Limit features to those with at least two detected peaks in one study group.
@@ -2251,10 +2233,10 @@ for pre-filtering, on the basis that they represent similar bio-fluids to our
 study samples, and thus, we anticipate observing relatively similar metabolites
 affected by similar measurement biases.
 
-We therefore evaluate the *dispersion ratio* (Dratio) [@broadhurst_guidelines_2018] for all features in the data set. Using the
-same function as above but this time with the `DratioFilter` parameter. More
-filter exist for this function and we invite the user to explore them as to
-decide what is best for their dataset.
+We therefore evaluate the *dispersion ratio* (Dratio) [@broadhurst_guidelines_2018]
+for all features in the data set. Using the same function as above but this
+time with the `DratioFilter` parameter. More filter exist for this function and
+we invite the user to explore them as to decide what is best for their dataset.
 
 ```{r}
 #' Compute and filter based on the Dratio
@@ -2264,13 +2246,7 @@ filter_dratio <- DratioFilter(threshold = 0.4,
                               mad = TRUE)
 res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 
-#' try using using the norm (filled) and see tht would be better. 
-
-#' Phili: i think you advised that we used the dratio filter only, but i am
-#'struggling to justify it in a proper way below, as we do expect a high degree
-#' of variability between the QC and study samples in any case...
-#' jo: I would also be OK to use in addition the RsdFilter - as long as we
-#' identify significant features later and can "annotate" some of them.
+#' try using using the norm (filled) and see that would be better. 
 ```
 
 The Dratio filter is a powerful tool to identify features that exhibit high
@@ -2278,9 +2254,7 @@ variability in the data, relating the variance observed in QC samples with that
 in study samples. By setting a threshold of 0.4, we remove features that have a
 high degree of variability between the QC and study samples. This filtering step
 ensures that only features are retained that have considerably lower technical
-than biological variance. [jo: reformulated, because constant abundance across
-samples could also be interpreted that we remove potentially interesting
-samples, that have differences in abundances between the sample group]
+than biological variance. 
 
 Note that the `rowDratio()` and `rowRsd()` functions from the
 `r Biocpkg("MetaboCoreUtils")` package could be used to calculate the actual
@@ -2488,13 +2462,17 @@ tab <- rowData(res)[rowData(res)$significant.CVD,
     as.data.frame()
 tab <- tab[order(abs(tab$coef.CVD), decreasing = TRUE), ]
 pandoc.table(
-    tab, style = "rmarkdown", split.table = Inf,
-    caption = "Features with significant differences in abundances.")
+    tab, style = "rmarkdown",
+    caption = "Table 7.Features with significant differences in abundances.")
 ```
 
 Below we visualize the EICs of the significant features to evaluate their (raw)
-signal. We restrict the MS data set to study samples. Parameter `keepFeatures =
-TRUE` ensures that identified features are retained in the subset object.
+signal. We restrict the MS data set to study samples. Parameters
+
+- `keepFeatures = TRUE`: ensures that identified features are retained in the
+  `subset object.
+- `peakBg`: defines the (background) color for each individual chromatographic
+  peak in the EIC object.
 
 ```{r}
 #' Restrict the raw data to study samples.
@@ -2503,12 +2481,10 @@ data_study <- data[sampleData(data)$phenotype != "QC", keepFeatures = TRUE]
 eic_sign <- featureChromatograms(
     data_study, features = rownames(tab), expandRt = 5, filled = TRUE)
 
-#' Plot the EICs. With parameter `peakBg` we define the (background) color for
-#' each individual chromatographic peak in the EIC object.
+#' Plot the EICs.
 plot(eic_sign, col = col_sample,
      peakBg = paste0(col_sample[chromPeaks(eic_sign)[, "sample"]], 40))
 legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
-
 ```
 
 The EICs for all significant features show a clear and single peak. Their
@@ -2536,10 +2512,10 @@ annotation, with the highest rate of false positive hits, bases on the features
 *m/z* ratios. Higher levels of annotations employ fragment spectra (MS2 spectra)
 of ions of interest requiring this however acquisition of additional data. In
 this section we will demonstrate multiple ways to annotate our significant
-features using functionality provided through Bioconductor packages. Excellent
-alternative approaches, and external software tools exist too and will be
-discussed later on in the section. [jo: last sentence is maybe a bit clumsy and
-needs rephrasing; just don't want to say that we have the best solution here]
+features using functionality provided through Bioconductor packages. Alternative
+approaches and external software tools, which may be better suited, will also
+be discussed later in the section.
+
 
 ## MS1 based annotation
 
@@ -2553,8 +2529,9 @@ and match them against reference values, i.e. exact masses of chemical
 compounds, that are provided by a reference database, in our case the MassBank
 database. The full MassBank data is re-distributed through Bioconductor's
 `r Biocpkg("AnnotationHub")` resource, which simplifies their integration into
-reproducible R-based analysis workflows. Below we load the resource, list all
-available MassBank data sets/releases and load one of them.
+reproducible R-based analysis workflows.
+Below we load the resource, list allavailable MassBank data sets/releases and 
+load one of them.
 
 ```{r}
 #' load reference data
@@ -2635,7 +2612,7 @@ by their INCHIKEY). The INCHI or INCHIKEY combine information from compound's
 chemical formula and structure, so while different compounds can share the same
 chemical formula, they should have a different structure and thus INCHI.
 
-```{r}
+```{r results='asis'}
 rownames(mtch_res) <- NULL
 
 #' Keep only info on features that machted - create a utility function for that
@@ -2651,8 +2628,7 @@ mtch_res <- split(mtch_res, mtch_res$feature_id) |>
 #' Display the results
 mtch_res |>
     as.data.frame() |>
-    pandoc.table(style = "rmarkdown", caption = "MS1 annotation results",
-                 split.table = Inf)
+    pandoc.table(style = "rmarkdown", caption = "Table 8.MS1 annotation results")
 ```
 
 The table above shows the results of the MS1-based annotation process. We can
@@ -2809,9 +2785,6 @@ There is thus only a moderate increase in memory demand after loading the MS
 data into memory (also because we in addition filtered and cleaned the MS2
 data).
 
-jo: thought it might be clearer if we first finish preparing the "query" spectra
-before loading the reference data.
-
 While we could proceed and match all these experimental MS2 spectra against
 reference fragment spectra, for our workflow we aim to annotate the features
 found significant in the differential abundance analysis. The goal is thus to
@@ -2892,20 +2865,22 @@ however also increase the memory demand of the present analysis.
 Now that both the `Spectra` object for the second run and the database spectra
 have been prepared, we can proceed with the matching process. We use the
 `matchSpectra()` function from the `r Biocpkg("MetaboAnnotation")` package with
-the `CompareSpectraParam` to define the settings for the matching. With
-`requirePrecursor = TRUE` we limit spectra similarity calculations to fragment
-spectra with a similar precursor *m/z*. With parameters `tolerance = 0.05` and
-`ppm = 40` we define the acceptable difference between compared *m/z*
-values. These relaxed tolerance settings ensure that we find matches even if
-reference spectra were acquired on instruments with a lower accuracy. With
-parameter `THRESHFUN` we define which matches to report. We keep all matches
-resulting in a spectra similarity score (calculated with the normalized dot
-product [@stein_optimization_1994], the default similarity function) larger than
-0.6.
+the `CompareSpectraParam` to define the settings for the matching. With the
+following parameters: 
+
+- `requirePrecursor = TRUE`: Limits spectra similarity calculations to fragment
+  spectra with a similar precursor *m/z*. 
+- `tolerance` and `ppm`: Defines the acceptable difference between compared
+  *m/z* values. These relaxed tolerance settings ensure that we find matches
+  even if reference spectra were acquired on instruments with a lower accuracy.
+- `THRESHFUN`: Defines which matches to report. Here, we keep all matches 
+  resulting in a spectra similarity score (calculated with the normalized dot
+  product [@stein_optimization_1994], the default similarity function) larger
+  than 0.6.
 
 ```{r}
 register(SerialParam())
-#' Define the settings for the spectra matching
+#' Define the settings for the spectra matching.
 prm <- CompareSpectraParam(ppm = 40, tolerance = 0.05,
                            requirePrecursor = TRUE,
                            THRESHFUN = function(x) which(x >= 0.6))
@@ -2938,11 +2913,11 @@ redundant information: we have multiple fragment spectra per feature and also
 MassBank contains several fragment spectra for each compound, measured using
 differing collision energies or MS instruments, by different laboratories. Below
 we thus iterate over the feature-compound pairs and select for each the one with
-the highest score. As an identifier for a compound (since compound names in
-MassBank are not standardized [jo: wrong word; normalized?]) we use its fragment
-spectra's InChI-key.
+the highest score. As an identifier for a compound, we use its fragment
+spectra's InChI-key, since compound names in MassBank do not have accepted
+consensus/controlled vocabularies.
 
-```{r}
+```{r results='asis'}
 #' - split the result per feature
 #' - select for each feature the best matching result for each compound
 #' - combine the result again into a data frame
@@ -2959,7 +2934,7 @@ ms2_mtch_res <-
 pandoc.table(ms2_mtch_res[, c("feature_id", "target_name", "score",
                               "target_inchikey")],
              style = "rmarkdown",
-             caption = "MS2 annotation results.",
+             caption = "Table 9.MS2 annotation results.",
              split.table = Inf)
 ```
 
@@ -2990,7 +2965,7 @@ We below plot the EIC for this feature highlighting the retention time at which
 the highest scoring MS2 spectra was recorded and create a mirror plot comparing
 this MS2 spectra to the reference fragment spectra for caffeine.
 
-```{r}
+```{r fig.height=5, fig.width=5}
 par(mfrow = c(1, 2))
 
 col_sample <- col_phenotype[sampleData(data)$phenotype]
@@ -2999,11 +2974,6 @@ eic <- featureChromatograms(data, features = ms2_mtch_res$feature_id[1])
 plot(eic, col = col_sample, peakCol = col_sample[chromPeaks(eic)[, "sample"]],
      peakBg = paste0(col_sample[chromPeaks(eic)[, "sample"]], 20))
 legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1)
-
-#' [jo: maybe we even keep the QCs in the plot? they would show that even the
-#' raw data has high quality, as there is hardly any difference between the
-#' signal in QC samples, while there is difference for CTR samples, which is
-#' actually to expect -> different individuals]
 
 #' Identify the best matching query-target spectra pair
 idx <- which.max(ms2_mtch_res$score)
@@ -3024,18 +2994,6 @@ target_ms2 <- target(ms2_mtch)[target_idx]
 plotSpectraMirror(query_ms2, target_ms2)
 legend("topleft",
        legend = paste0("precursor m/z: ", format(precursorMz(query_ms2), 3)))
-
-##Phili: not sure what you think of this whole annotation thing way, the list
-# of spectra/ list of
-#'matches may be a bit confusing ? Do you have a better way of doing that ? Or
-#'should i keep to the  "normal" way and not use fitlerRanges() in the first
-#'place ?
-#' [jo: to me it's pretty clear like that. filterRanges makes it much easier
-#' /cleaner than matchValues]
-
-#' are you fine with having one match at the end ? It's a nice story i guess
-
-#' [jo: jepp, totally fine. it's a nice story indeed]
 ```
 
 The plot above clearly shows the higher signal for this feature in CTR compared
@@ -3105,11 +3063,6 @@ reflects the need for more comprehensive, and reliable, reference annotation
 libraries. Differences observed in the present data sets are related to the
 lifestyle of individuals rather then to the pathological properties of the
 investigated disease.
-
-[jo: not sure if we should focus more on the "results", or rather emphasize the
-process how we got there, i.e. summarize the technical/methodological aspects of
-the workflow; since the topic of this "paper" is the workflow I would maybe
-focus on the technical aspects.]
 
 
 # Session information
