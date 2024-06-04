@@ -52,7 +52,10 @@ feature identification, Bioconductor,...
 LC-MS/MS is a powerful tool for metabolomics investigations, providing a
 comprehensive view of the metabolome. It enables the identification of
 a large number of metabolites and their relative abundance in biological
-samples. The high sensitivity and specificity of LC-MS/MS make it an 
+samples. Liquid Chromatography is a separation technique which relies on the different interactions of the analytes towards a chromatographic column - the stationary phase - and the eluent of the analysis - the mobile phase. The stronger the affinity of a analyte to the stationary phase - dictated by polarity, size, charges and other parameters - the longer it will take for the compound to leave the column and be detected by our coupled technique - the Mass Spectrometer.
+Mass Spectrometry is used to identify and quantify ions based on their mass-to-charge (m/z) ratio. Its high selectivity relies not only on the capability to separate compounds with very small variations in mass, but also on the capacity to promote fragmentation. An ion with an initial m/z (The parent ion) can be broken into characteristic fragments (Daughter ions) which would then help in the structure elucidation and identification of that specific compound.
+Therefore, LC-MS/MS data are usually tridimensional datasets containing the retention time of the compounds after separation by liquid chromatography, the detected m/z of all the compounds at a given time, and the intensity of each of such signals. As well as that, each MS signal can have two different levels, corresponding to the signal of the parent ion (called MS1) and the signals from their corresponding fragments (denominanted MS2).
+The high sensitivity and specificity of LC-MS/MS make it an 
 indispensable tool for biomarker discovery and elucidating metabolic pathways.
 The untargeted approach is particularly useful for hypothesis-free
 investigations, allowing for the detection of unexpected metabolites and
@@ -777,9 +780,10 @@ mz_diff <- cst |>
 #' Express differences in ppm
 range(mz_diff * 1e6 / mean(unlist(mz(cst))))
 ```
+În the example above, first we detected the signals belonging to the cysine IS within an deviation of approximately 30 ppm (Given by "mzmin" and "mzmax" of this given ion). However, we see that in the current dataset, the m/z values for the cystine_13C_15N ion vary to a maximum of 14.82 ppm.
 
 We therefore, choose a value close to the maximum within this range for
-parameter `ppm`.
+parameter `ppm`, i.e. 15 ppm.
 
 Now, we perform the chromatographic peak detection process with the adapted
 settings on our EICs. It is important to note that, to properly estimate
@@ -793,6 +797,8 @@ reduced for peak detection in EICs, because within the small retention time
 range usually not enough signal is present to properly estimate the background
 noise. Finally, in case of too few MS1 data points per peaks, setting CentWave's
 advanced parameter `extendLengthMSW` to `TRUE` can help with peak detection. 
+
+(Dan: Maybe add What does extendLenghtMSW does exactly?)
 
 ```{r}
 #' Parameters adapted for chromatographic peak detection on EICs.
@@ -928,6 +934,8 @@ evaluated for merging.
   the lower intensity, are merged. Values for this parameter should not be too 
   small to avoid merging closely co-eluting ions, such as isomers. 
 
+(Dan: If present in the current dataset - and if we have such information - perhaps would be useful to also show some examples of wrong processing, like using too high of expandMz values and merging isotopes, or too small minProp and merging isomers.)
+
 We test these settings below on the EICs with the split peaks.
 
 ```{r test merging}
@@ -1048,7 +1056,11 @@ chromatographic peaks within these regions are considered for grouping into a
 feature. High density areas are identified using the base R `density()`
 function, for which `bw` is a parameter: higher values define wider retention
 time areas, lower values require chromatographic peaks to have more similar
-retention times. Whether such candidate peaks get grouped into a feature depends
+retention times. This parameter can be seen as on the second correspondence plot below, where the grey field corresponds to the retention time area and the black line to the smoothness of the density curve.
+
+(Dan: The bw parameter wasn't clear to me at this point, but I understood it better at the correspondence part. To facilitate the reading I added the plot on the next chunk, as it helped making sense of it)
+
+Whether such candidate peaks get grouped into a feature depends
 also on parameters `sampleGroups` and `minFraction`: `sampleGroups` should
 provide, for each sample, the sample group it belongs to, and `minFraction` is
 expected to be a value between 0 and 1 defining the proportion of samples within
@@ -1073,6 +1085,13 @@ param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype == "QC",
                           binSize = 0.01, ppm = 10,
                           bw = 2)
 data <- groupChromPeaks(data, param = param)
+
+plotChromPeakDensity(
+    eic_cystine, param = param,
+    col = paste0(col_sample, "80"),
+    peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
+    peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 20),
+    peakPch = 16)
 ```
 
 *PeakGroups*-based alignment can next be performed using the `adjustRtime()`
@@ -1380,7 +1399,7 @@ feature for each test ion. The other important parameters are:
 - `binSize` and `ppm`: Allow configuring the required similarity of *m/z*
   values of the chromatographic peaks to consider them for grouping.
     - `binsize`: Our data was generated on a high resolution MS instrument, thus
-    we select a low value for this paramter
+    we select a low value for this parameter
     - `ppm`: For TOF instruments, it is suggested to use a value for `ppm`
     larger than 0 to accommodate the higher measurement error of the instrument
     for larger *m/z* values. 
