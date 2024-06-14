@@ -1493,8 +1493,8 @@ the next section.
 ## Gap filling
 
 The previously observed missing values (*NA*) could be attributed to various
-reasons. Even if they represent a genuinely missing value, indicating that an
-ion (feature) is truly not present in a particular sample, it could also be a
+reasons. Although they  might represent a genuinely missing value, indicating that an
+ion (feature) was truly not present in a particular sample, they could also be a
 result of a failure in the preceding chromatographic peak detection step. It is
 crucial to be able to recover missing values of the latter category as much as
 possible to reduce the eventual need for data imputation. We next examine how
@@ -1524,11 +1524,11 @@ chromatogram(data[c(2, 3)],
 ```
 
 In both instances, a chromatographic peak was only identified in one of the two
-selected samples (red line), which no peak was detected in the blue labeled
-sample and hence a missing value is reported for this feature in that particular
+selected samples (red line), while no peak was detected in the blue labeled
+sample and hence a missing value is reported for this feature in those particular
 samples. Also, in both cases, signal was measured in both samples, thus,
-reporting a missing values would not be correct in this case. The signal for
-this feature is, particularly in the blue labeled sample, is very low and
+reporting a missing value would not be correct in this case. The signal for
+this feature is, particularly in the blue labeled sample, very low and
 sketchy. That is also the most likely reason peak detection failed. To rescue
 signal in such cases, the `fillChromPeaks()` function can be used with the
 `ChromPeakAreaParam` approach. This method defines for each feature, based on
@@ -1563,9 +1563,11 @@ After gap-filling, also in the blue colored sample a chromatographic peak is
 present and its peak area would be reported as feature abundance for that
 sample.
 
+(I struggle a bit to understand the following plot, I tried to add some comments to make it more clear)
+
 To further assess the effectiveness of the gap-filling method for rescuing
 signals, we can also plot the average of features with at least one missing
-value against the average filled-in signal. It is advisable to perform this
+value (i.e. only signals with filled-in values) against the average filled-in signal (i.e. all the signals of a given sample after gap-filling). It is advisable to perform this
 analysis on repeatedly measured samples; in this case, our QC/POOL samples will
 be used.
 
@@ -1607,10 +1609,10 @@ grid()
 abline(0, 1)
 
 ```
-
+In the end, we are elft with a plot which compares the intensity between the signals of filled feature (only) with the whole filled dataset (Which comprises filled features and originally detected features). 
 The detected (x-axis) and gap-filled (y-axis) values for QC samples are highly
 correlated. Especially for higher abundances, the agreement is very high, while
-for low intensities, as can be expected, differences are higher. Below we in
+for low intensities, as can be expected, differences are higher and trending to below the correlation line. Below we in
 addition fit a linear regression line to the data and summarize its results
 
 ```{r}
@@ -1655,7 +1657,7 @@ their *m/z* and retention time values) using the `featureDefinitions()`
 function. Thus, these two arrays could be extracted from the *xcms* result
 object and used/imported in other analysis packages for further processing.
 They could for example also be exported to tab delimited text files, and used in
-an external tool, or used, if also MS2 spectra would be available for
+an external tool, or used, if also MS2 spectra would be available, for
 feature-based molecular networking in the GNPS analysis environment
 [@nothias_feature-based_2020] (see also the [GNPS
 documentation](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/)
@@ -1678,7 +1680,7 @@ res
 
 ```
 
-Sample annotations from the *xcms* result's `sampleData()` are now available as
+Sample identifications from the *xcms* result's `sampleData()` are now available as
 `colData()` (column, sample annotations) and the `featureDefinitions()` as
 `rowData()` (row, feature annotations). The feature values have been added as
 the first `assay()` in the `SummarizedExperiment` and even the processing
@@ -1738,7 +1740,7 @@ normalization algorithms are available in packages such as Bioconductor's
 a very interesting normalization approach adaptable and scalable to the user
 dataset [@metabo10040135].
 
-Generally, for LC-MS data, noise can be categorized into three main
+Generally, for LC-MS data, bias can be categorized into three main
 groups[@broadhurst_guidelines_2018]:
 
 - Variances introduced by sample collection and initial processing, which can
@@ -1791,10 +1793,10 @@ unsupervised, visualization of the data that also provides insights into
 potential quality issues in the data. In order to apply a PCA to the measured
 feature abundances, we need however to impute (the still present) missing
 values. We assume that most of these missing values (after the gap-filling step)
-represent signal which is below detection limit. In such cases, missing values
-can be replaced with random values from the uniform distribution sampling
-numbers from half of smallest measured value to the smallest measured value for
-a specific feature. The uniform distribution is defined with two parameters
+represent signal which is below detection limit. In such cases, missing values 
+can be replaced with random values sampled from a uniform distribution, 
+ranging from half of the smallest measured value to the smallest measured value 
+for a specific feature. The uniform distribution is defined with two parameters
 (minimum and maximum) and all values between them have an equal probability of
 being selected.
 
