@@ -1,11 +1,17 @@
-# end-to-end-untargeted-metabolomics
-A simple end-to-end untargeted metabolomics analysis workflow
+# End-to-end-untargeted-metabolomics
+A simple end-to-end untargeted metabolomics analysis workflow.
 
-Message for co-authors 
+Some preparation steps:  
+
+- Please ensure you have the latest version of R installed locally. You can find
+  about it here: [url](https://cran.r-project.org/src/base/R-4/)
 
 -  Packages: you can copy/paste the code down here to install the bioconductor 
-packages needed for the analysis. If at any point when running the code you get 
-an error message that a function cannot be found tell me and I will help.
+   packages needed to run the analysis. If at any point when running the code you get 
+   an error message that a function cannot be found tell me and I will help. We also advise
+   to chack for update as often as possible so you can properly enjoy the latest
+   development in LC-MS/MS analysis.
+
 ```{r}
 BiocManager::install("rformassspectrometry/Spectra")
 BiocManager::install("sneumann/xcms")
@@ -22,6 +28,9 @@ BiocManager::install("RforMassSpectrometry/SummarizedExperiment")
 ```
 
 The other packages are part of CRAN so should be easy to install.
+
+
+For co-auhtors: 
 
 - Don't forget to regularly check if the main branch  was updated and merge it 
 with your own branch as to not get out of sync with the main branch.
