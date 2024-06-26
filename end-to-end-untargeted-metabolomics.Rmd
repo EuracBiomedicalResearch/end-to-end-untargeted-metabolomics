@@ -2162,7 +2162,9 @@ pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
 The table above shows the distribution of the coefficient of variation (CV, RSD)
-for both raw and normalized data. As anticipated, the CV values for the quality
+for both raw and normalized data. The first column highlights the % of the data 
+which is below a given RDS value, e.g. 25% of the data has a RSD equal or lower
+than 0.04557 at the QC_raw data. As anticipated, the CV values for the quality
 controls (QCs), which reflect technical variance, are lower compared to those
 for the study samples, which include both technical and biological
 variance. Overall, minimal disparity exists between the raw and normalized data,
@@ -2212,7 +2214,7 @@ res_unfilt <- res
 
 Here we will eliminate features that exhibit high variability in our dataset.
 Repeatedly measured QC samples typically serve as a robust basis for cleansing
-datasets allowing to identify features with excessively high noise. In our data
+datasets allowing to identify features with excessively high noise. As in our data
 set external QC samples were used, i.e. pooled samples from a different
 collection and using a slightly different sample matrix, their utility for
 filtering is somewhat limited. For a comprehensive description and guidelines
@@ -2273,9 +2275,11 @@ res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 The Dratio filter is a powerful tool to identify features that exhibit high
 variability in the data, relating the variance observed in QC samples with that
 in study samples. By setting a threshold of 0.4, we remove features that have a
-high degree of variability between the QC and study samples. This filtering step
-ensures that only features are retained that have considerably lower technical
-than biological variance. 
+high degree of variability between the QC and study samples. In this example, 
+any feature in which the deviation at the QC is higher than 40% of the deviation
+on the study samples is removed (Dan - Is that what the 0.4 threshold means?).
+This filtering step ensures that only features are retained that have 
+considerably lower technical than biological variance. 
 
 Note that the `rowDratio()` and `rowRsd()` functions from the
 `r Biocpkg("MetaboCoreUtils")` package could be used to calculate the actual
@@ -2396,7 +2400,7 @@ fit <- lmFit(log2(assay(res, "norm_imputed")), design = design)
 fit <- eBayes(fit)
 ```
 
-After the linear models habe been fitted, we can now proceed to extract the
+After the linear models have been fitted, we can now proceed to extract the
 results. We will create a data frame containing the coefficients, raw and
 adjusted p-values (applying a Benjamini-Hochberg correction, e.g. `method =
 "BH"` for improved control of the false discovery rate), the average intensity
@@ -2551,7 +2555,7 @@ compounds, that are provided by a reference database, in our case the MassBank
 database. The full MassBank data is re-distributed through Bioconductor's
 `r Biocpkg("AnnotationHub")` resource, which simplifies their integration into
 reproducible R-based analysis workflows.
-Below we load the resource, list allavailable MassBank data sets/releases and 
+Below we load the resource, list all available MassBank data sets/releases and 
 load one of them.
 
 ```{r}
@@ -2619,7 +2623,7 @@ mtch_res <- matchedData(mtch, c("feature_id", "mzmed", "rtmed",
 mtch_res
 ```
 
-Thus, in total `r sum(!is.na(mtch_res$ppm_error))` ions of compounds in
+Thus, in total `r sum(!is.na(mtch_res$ppm_error))`(237?) ions of compounds in
 MassBank were matched to our significant features based on the specified
 tolerance settings. Many compounds, while having a different structure and thus
 function/chemical property, have an identical chemical formula and thus
@@ -2653,16 +2657,16 @@ mtch_res |>
 ```
 
 The table above shows the results of the MS1-based annotation process. We can
-see that four of our significant features were matched to the MassBank
+see that four of our significant features (FT0371, FT565, FT0845 and FT1171) were matched to the MassBank
 database. The matches seem to be pretty accurate with low ppm errors. The
 deduplication performed above considerably reduced the number of hits for each
 feature, but the first still matches ions of a large number of compounds (all
 with the same chemical formula).
 
 Considering in addition retention times in the MS1-based annotation will
-increase, but requires additional (previous) knowledge and data such as
+increase their confidence, but requires additional (previous) knowledge and data such as
 recording of the retention time of the pure standard for a compound on the same
-LC setup.
+LC setup. An alternative approach which might provide better inside on annotations and help to choose between different annotations for a same feature is to evaluate certain chemical properties of the possible matches. For instance, the LogP value, available in several databases such HMDB, provides an insight on a given compound`s polarity. As this property highly affects the interaction of the analyte with the column, it usually also directly affects separation. As an example, compounds with high logP values tend to be eluted later in systems using Reversed Phase Columns. Therefore, a comparison between an analyte`s retention time and polarity can help to rule out some possible misidentifications.
 
 While being of low confidence, MS1-based annotation can provide first candidate
 annotations that could be confirmed or rejected by additional analyses.
@@ -2728,7 +2732,7 @@ Compared to the number of MS2 spectra, far less MS1 spectra were acquired. The
 configuration of the MS instrument was set to ensure that the ions specified in
 the *inclusion list* were selected for fragmentation, even if their intensity
 might be very low. With this setting, however, most of the recorded MS2 spectra
-will however represent only noise. The plot below shows the location of
+will represent only noise. The plot below shows the location of
 precursor ions in the *m/z* - retention time plane for the 3 files
 
 ```{r eval=FALSE, include=FALSE}
@@ -2769,7 +2773,7 @@ We next remove also mass peaks with an *m/z* value greater or equal to the
 precursor *m/z* of the ion. This puts, for the later matching against reference
 spectra, more weight on the fragmentation pattern of ions and avoids hits based
 only on the precursor *m/z* peak (and hence a similar mass of the compared
-compounds). At last we restrict to the data to spectra with at least two
+compounds). At last we restrict the data to spectra with at least two
 fragment peaks and scale their intensities such that their sum is 1 for each
 spectrum. While similarity calculations are not affected by this scaling, it
 makes visual comparison of fragment spectra easier to read.
@@ -2818,8 +2822,9 @@ using the `featureArea()` function that effectively considers the actual *m/z*
 and retention time ranges of the features' chromatographic peaks and therefore
 increase the chance of finding a correct match. This however also assumes that
 retention times between the first and second run don't differ by
-much. Alternatively, we would need to align the retention times of the second,
-LC-MS/MS, data set to those of the first.
+much. Alternatively, we would need to align the retention times of the second
+LC-MS/MS
+data set to those of the first.
 
 Below we first extract the *feature area*, i.e. the *m/z* and retention time
 ranges, for the significant features.
@@ -2980,7 +2985,7 @@ importance of proper experimental planning and the need to control for all
 potential confounding factors. For the present experiment, no disease-specific
 biomarker could be identified, but a life-style property of individuals
 suffering from this disease: coffee consumption should be reduced for this
-particular disease to reduce the risk of heart arrhythmias.
+particular disease to reduce the risk of heart arrhythmias.(But CVD patients had lower abundance of this ion then when compared with control group: FT0845 had a fold change of -6.334. Since caffeine was decreased on the disease group, doesn`t seem that our data tells us that the disease is related to caffeine consumption (Although it does make sense biologically). Also is though to make good conclusion from such analysis, so I would replace this alst sentence by something like "but a probable life-style property that separate disease group from controls")
 
 We below plot the EIC for this feature highlighting the retention time at which
 the highest scoring MS2 spectra was recorded and create a mirror plot comparing
