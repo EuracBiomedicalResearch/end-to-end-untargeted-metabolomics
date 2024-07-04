@@ -52,8 +52,8 @@ feature identification, Bioconductor,...
 LC-MS/MS is a powerful tool for metabolomics investigations, providing a
 comprehensive view of the metabolome. It enables the identification of
 a large number of metabolites and their relative abundance in biological
-samples. Liquid Chromatography is a separation technique which relies on the different interactions of the analytes towards a chromatographic column - the stationary phase - and the eluent of the analysis - the mobile phase. The stronger the affinity of a analyte to the stationary phase - dictated by polarity, size, charges and other parameters - the longer it will take for the compound to leave the column and be detected by our coupled technique - the Mass Spectrometer.
-Mass Spectrometry is used to identify and quantify ions based on their mass-to-charge (m/z) ratio. Its high selectivity relies not only on the capability to separate compounds with very small variations in mass, but also on the capacity to promote fragmentation. An ion with an initial m/z (The parent ion) can be broken into characteristic fragments (Daughter ions) which would then help in the structure elucidation and identification of that specific compound.
+samples. Liquid Chromatography is a separation technique which relies on the different interactions of the analytes towards a chromatographic column - the stationary phase - and the eluent of the analysis - the mobile phase. The stronger the affinity of a analyte to the stationary phase - dictated by polarity, size, charges and other parameters - the longer it will take for the compound to leave the column and be detected by our coupled technique - the Mass Spectrometer. 
+Mass Spectrometry is used to identify and quantify ions based on their mass-to-charge (m/z) ratio. Its high selectivity relies not only on the capability to separate compounds with very small variations in mass, but also on the capacity to promote fragmentation. An ion with an initial m/z (The parent ion) can be broken into characteristic fragments (Daughter ions) which would then help in the structure elucidation and identification of that specific compound.(G. Theodoridis, 2012)
 Therefore, LC-MS/MS data are usually tridimensional datasets containing the retention time of the compounds after separation by liquid chromatography, the detected m/z of all the compounds at a given time, and the intensity of each of such signals. As well as that, each MS signal can have two different levels, corresponding to the signal of the parent ion (called MS1) and the signals from their corresponding fragments (denominanted MS2).
 The high sensitivity and specificity of LC-MS/MS make it an 
 indispensable tool for biomarker discovery and elucidating metabolic pathways.
@@ -62,7 +62,7 @@ investigations, allowing for the detection of unexpected metabolites and
 pathways. However, the analysis of LC-MS/MS data is complex and requires a
 series of preprocessing steps to extract meaningful information from the raw
 data. The main challenges are to deal with the lack of ground truth data, the
-high dimensionality of the data, and the presence of noise and artifacts.
+high dimensionality of the data, and the presence of noise and artifacts. (H. Gika, 2014)
 Moreover, due to different instrumental setups and used protocols the
 definition of a single *one-fits-all* workflow is impossible. Finally, while
 specialized software packages exist for each individual step during an
