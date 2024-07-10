@@ -21,26 +21,27 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 Metabolomics provides a real-time view of the metabolic state of examined
 samples, with mass spectrometry serving as a key tool in deciphering intricate
 differences in metabolomes due to specific factors. In the context of
-metabolomic investigations, untargeted LC-MS/MS emerges as a powerful approach
-thanks to its versatility and resolution. This paper focuses on a dataset aimed 
-at identifying differences in plasma metabolite levels between individuals 
-suffering from a cardiovascular disease and healthy controls.
+metabolomic investigations, untargeted liquid chromatography with tandem mass
+spectrometry (LC-MS/MS) emerges as a powerful approach thanks to its versatility
+and resolution. This paper focuses on a dataset aimed at identifying differences
+in plasma metabolite levels between individuals suffering from a cardiovascular
+disease and healthy controls.
 
-Despite the potential insights offered by untargeted LC-MS/MS data, a 
-significant challenge in the field lies in the generation of reproducible and 
-scalable analysis workflows. This struggle is due to the previously mentioned 
-high versatility of the technique, which results in difficulty in having a 
-*one-size-fits-all* workflow and software that will adapt to all experimental 
-setups. The power of R-based analysis workflows lies in their high 
-customizability and adaptability to specific instrumental and experimental 
-setups; however, while various specialized packages exist for individual 
-analysis steps, their seamless integration and application to large cohort 
-datasets remain elusive.Addressing this gap, we present an innovative R 
-workflow that leverages *xcms*, and packages of the *RforMassSpectrometry* 
-environment to encompass all aspects of pre-processing and downstream analyses 
-for LC-MS/MS datasets in a reproducible manner and allow an easy customization 
-to generate data-set specific workflows. Our pipeline seamlessly integrates 
-with Bioconductor packages, offering adaptability to diverse study designs and 
+Despite the potential insights offered by untargeted LC-MS/MS data, a
+significant challenge in the field lies in the generation of reproducible and
+scalable analysis workflows. This struggle is due to the aforementioned high
+versatility of the technique, which results in difficulty in having a
+*one-size-fits-all* workflow and software that will adapt to all experimental
+setups. The power of R-based analysis workflows lies in their high
+customizability and adaptability to specific instrumental and experimental
+setups; however, while various specialized packages exist for individual
+analysis steps, their seamless integration and application to large cohort
+datasets remain elusive. Addressing this gap, we present an innovative R
+workflow that leverages *xcms*, and packages of the *RforMassSpectrometry*
+environment to encompass all aspects of pre-processing and downstream analyses
+for LC-MS/MS datasets in a reproducible manner and allow an easy customization
+to generate data-set specific workflows. Our pipeline seamlessly integrates with
+Bioconductor packages, offering adaptability to diverse study designs and
 analysis requirements.
 
 # Keyword
@@ -50,23 +51,38 @@ feature identification, Bioconductor,...
 # Introduction
 
 LC-MS/MS is a powerful tool for metabolomics investigations, providing a
-comprehensive view of the metabolome. It enables the identification of
-a large number of metabolites and their relative abundance in biological
-samples. Liquid Chromatography is a separation technique which relies on the different interactions of the analytes towards a chromatographic column - the stationary phase - and the eluent of the analysis - the mobile phase. The stronger the affinity of a analyte to the stationary phase - dictated by polarity, size, charges and other parameters - the longer it will take for the compound to leave the column and be detected by our coupled technique - the Mass Spectrometer. 
-Mass Spectrometry is used to identify and quantify ions based on their mass-to-charge (m/z) ratio. Its high selectivity relies not only on the capability to separate compounds with very small variations in mass, but also on the capacity to promote fragmentation. An ion with an initial m/z (The parent ion) can be broken into characteristic fragments (Daughter ions) which would then help in the structure elucidation and identification of that specific compound.(G. Theodoridis, 2012)
-Therefore, LC-MS/MS data are usually tridimensional datasets containing the retention time of the compounds after separation by liquid chromatography, the detected m/z of all the compounds at a given time, and the intensity of each of such signals. As well as that, each MS signal can have two different levels, corresponding to the signal of the parent ion (called MS1) and the signals from their corresponding fragments (denominanted MS2).
-The high sensitivity and specificity of LC-MS/MS make it an 
-indispensable tool for biomarker discovery and elucidating metabolic pathways.
-The untargeted approach is particularly useful for hypothesis-free
-investigations, allowing for the detection of unexpected metabolites and
-pathways. However, the analysis of LC-MS/MS data is complex and requires a
-series of preprocessing steps to extract meaningful information from the raw
-data. The main challenges are to deal with the lack of ground truth data, the
-high dimensionality of the data, and the presence of noise and artifacts. (H. Gika, 2014)
-Moreover, due to different instrumental setups and used protocols the
-definition of a single *one-fits-all* workflow is impossible. Finally, while
-specialized software packages exist for each individual step during an
-analysis, their seamless integration remains elusive.
+comprehensive view of the metabolome. It enables the identification of a large
+number of metabolites and their relative abundance in biological samples. Liquid
+Chromatography is a separation technique which relies on the different
+interactions of the analytes towards a chromatographic column - the stationary
+phase - and the eluent of the analysis - the mobile phase. The stronger the
+affinity of a analyte to the stationary phase - dictated by polarity, size,
+charges and other parameters - the longer it will take for the compound to leave
+the column and be detected by our coupled technique - the Mass Spectrometer.
+Mass Spectrometry is used to identify and quantify ions based on their
+mass-to-charge (m/z) ratio. Its high selectivity relies not only on the
+capability to separate compounds with very small variations in mass, but also on
+the capacity to promote fragmentation. An ion with an initial m/z (The parent
+ion) can be broken into characteristic fragments (Daughter ions) which would
+then help in the structure elucidation and identification of that specific
+compound.(G. Theodoridis, 2012) Therefore, LC-MS/MS data are usually
+tridimensional datasets containing the retention time of the compounds after
+separation by liquid chromatography, the detected m/z of all the compounds at a
+given time, and the intensity of each of such signals. As well as that, each MS
+signal can have two different levels, corresponding to the signal of the parent
+ion (called MS1) and the signals from their corresponding fragments
+(denominanted MS2). The high sensitivity and specificity of LC-MS/MS make it
+indispensable for biomarker discovery and elucidating metabolic pathways. The
+untargeted approach is particularly useful for hypothesis-free investigations,
+allowing for the detection of unexpected metabolites and pathways. However, the
+analysis of LC-MS/MS data is complex and requires a series of preprocessing
+steps to extract meaningful information from the raw data. The main challenges
+include dealing with the lack of ground truth data, the high dimensionality of
+the data, and the presence of noise and artifacts. (H. Gika, 2014) Moreover, due
+to different instrumental setups and protocols the definition of a single
+*one-fits-all* workflow is impossible. Finally, while specialized software
+packages exist for each individual step during an analysis, their seamless
+integration remains elusive.
 
 The *RforMassSpectrometry* initiative aims to implement an expandable, flexible
 infrastructure for the analysis of MS data, providing also a comprehensive
@@ -79,7 +95,7 @@ the particular data set and how various R packages can be seamlessly integrated
 to ensure efficient and reproducible processing. The present workflow covers all
 steps for LC-MS/MS data analysis, from preprocessing, data normalization,
 differential abundance analysis to the annotation of the significant
-*features*. Various options for visualizations as well as quality assessment are
+*features*. Various options for visualization as well as quality assessment are
 presented for all analysis steps.
 
 # Data description
@@ -109,6 +125,14 @@ features to metabolites. Note that also alternative analysis options and R
 packages could be used for different steps and some examples are mentioned
 throughout the workflow.  [jo: I'll include some of these maybe later. It would
 be key to justify why this workflow is comprehensive]
+
+[anna: maybe it would be useful to explain in a short sentence what a feature
+is, either in the paragraph above, where it appears for the first time, or in
+the data description section, where it is also mentioned (I am afraid it's not
+immediately clear what a feature is). Something like this ..... significant
+feature, i.e., collections of signals that have the same retention time and
+mass-to-charge ratios pertaining to the same ions. Feel free to ignore this or
+to modify the definition to suit the context as best as possible.]
 
 Our workflow is therefore based on the following dependencies:
 
@@ -249,7 +273,7 @@ and can be accessed using `spectra()` function. Each element in this object is a
 spectrum - they are organised linearly and are all combined in the same
 `Spectra` object one after the other (ordered by retention time and samples).
 Below we access the data set's `Spectra` object which will summarize its
-available information and provide, among other, the total number of
+available information and provide, among other things, the total number of
 spectra of the data set.
 
 ```{r}
@@ -279,9 +303,9 @@ quantification of the signal. A second (LC-MS/MS) data set also with fragment
 (MS2) spectra of the same samples will be used later on in the workflow.
 
 Note that users should not restrict themselves to data evaluation examples shown
-here or in other tutorials. The *Spectra* package enables an user-friendly
-access to the full MS data and its functionality should be extensively used to
-explore, visualize and summarize the data.
+here or in other tutorials. The *Spectra* package enables user-friendly access
+to the full MS data and its functionality should be extensively used to explore,
+visualize and summarize the data.
 
 As another example, we below determine the retention time range for the entire
 data set.
@@ -302,6 +326,8 @@ information. Work is underway to develop/improve the infrastructure for
 chromatographic data through a new `Chromatograms` object aimed to be as
 flexible and user-friendly as the `Spectra` object.
 
+[anna: the chromatogram paragraph seems to be a bit out of context here (personal opinion, feel free to just ignore it). I would maybe put the emphasis on the difference in data organization, while keeping the chromatogram descprition for a later section (as it is already). Maybe just write a reminder in the later section that the data are organized differently for LC and MS data.]
+
 # Data visualization and general quality assessment
 
 Effective visualization is paramount for inspecting and assessing the quality of
@@ -315,8 +341,8 @@ MS data. For a general overview of our LC-MS data, we can:
 - Aggregate mass peak intensities for each spectrum, resulting in the Base Peak
   Chromatogram (BPC). The BPC shows the highest measured intensity for each
   distinct retention time (hence spectrum) and is thus orthogonal to the BPS,
-  which reports for each *m/z* the highest intensity along the retention time
-  range.
+  [anna: I feel this is redundant, since it is written just a few lines above. which reports for each *m/z* the highest intensity along the retention time
+  range.]
 - Sum mass peak intensities for each spectrum to create a Total Ion Chromatogram
   (TIC).
 - Compare the BPS of all samples in an experiment to evaluate similarity of
@@ -328,8 +354,10 @@ In addition to such general data evaluation and visualization, it is also
 crucial to investigate specific signal of e.g. internal standards or
 compounds/ions known to be present in the samples.
 
+[anna: I believe it could be beneficial to add why we want to look at the internal stadards, like: "By providing a reliable reference, internal standards help achieve consistent and accurate analytical results."]
 
-## Spectra Data Visualization
+
+## Spectra Data Visualization: BPS
 
 The BPS collapses data in the retention time dimension, providing insights into
 the most abundant mass-to-charge values (*m/z*) in the dataset, irrespective of
@@ -341,12 +369,12 @@ measurement error/resolution of the instrument. Below we use the
 parameter `f = fromFile(data)`) into a single spectrum. All mass peaks with a
 difference in *m/z* value smaller than 3 parts-per-million (ppm) are combined
 into one mass peak, with an intensity representing the maximum of all such
-grouped mass peaks. To reduce memory requirement we in addition first *bin* each
-spectrum combining all mass peaks within a spectrum aggregating mass peaks into
-bins with 0.01 *m/z* width. In case of large datasets, it is also recommended to
-set the `processingChunkSize()` parameter of the `MsExperiment` object to a
-finite value (default is `Inf`) which will cause the data to be processed (and
-loaded into memory) in chunks of `processingChunkSize()` spectra. This can
+grouped mass peaks. To reduce memory requirement, we in addition first *bin*
+each spectrum combining all mass peaks within a spectrum, aggregating mass peaks
+into bins with 0.01 *m/z* width. In case of large datasets, it is also
+recommended to set the `processingChunkSize()` parameter of the `MsExperiment`
+object to a finite value (default is `Inf`) causing the data to be processed
+(and loaded into memory) in chunks of `processingChunkSize()` spectra. This can
 reduce memory demand and speed up the process.
 
 ```{r}
@@ -389,12 +417,12 @@ result.
 #' Calculate similarities between BPS
 sim_matrix <- compareSpectra(bps)
 
-#' Add rownames and colnames
+#' Add sample names as rownames and colnames
 rownames(sim_matrix) <- colnames(sim_matrix) <- sampleData(data)$sample_name
 ann <- data.frame(phenotype = sampleData(data)[, "phenotype"])
 rownames(ann) <- rownames(sim_matrix)
 
-#' plot the heatmap
+#' Plot the heatmap
 pheatmap(sim_matrix, annotation_col = ann,
          annotation_colors = list(phenotype = col_phenotype))
 ```
@@ -405,11 +433,13 @@ the study samples. This is expected as the QC samples are a pool of serum
 samples from a larger cohort, while the study samples are plasma samples from
 participants from a different study (and sample collection).
 
+[anna: I think that the sentence above is redundant, as it is something clearly explained above. I would maybe emphasize that the heatmap confirms what was seen with the BPS, with one cluster for the QCs and one for the study samples, owing to the fact that they come from different cohorts/experiments/sample collections. Something along the lines of "The heatmap confirms the observations made with the BPS, showing distinct clusters for the QCs and the study samples, owing to the different matrices and sample collections."]
+
 It is also strongly recommended to delve deeper into the data by exploring it in
 more detail. This can be accomplished by carefully assessing our data and
-extracting spectra or regions of interest for further examination. Here we will
-now look at how to extract information for specific spectrum from specific
-samples.
+extracting spectra or regions of interest for further examination. In the next
+chunk, we will look at how to extract information for a specific spectrum from
+distinct samples.
 
 ```{r}
 #' Accessing a single spectrum - comparing with QC
@@ -422,8 +452,11 @@ plotSpectra(spec2, main = "125th spectrum of one CTR sample")
 
 There is indeed a significant difference in peak distribution and intensity
 between the QC sample and the CTR sample. This further illustrates the apparent
-difference in signal between the QC and study samples from this data set. We
-next compare also a full MS1 spectrum from a CVD and a CTR sample.
+difference in signal between the QC and study samples from this data set. [anna:
+I feel the paragraph above could be combined in one sentence not to sound too
+repetitive: The significant dissimilarities in peak distribution and intensity
+confirm the difference in composition between QCs and study samples.] We next
+compare a full MS1 spectrum from a CVD and a CTR sample.
 
 ```{r}
 #' Accessing a single spectrum - comparing CVD and CTR
@@ -465,7 +498,7 @@ data.frame(intensity = unlist(intensity(filt_spec)),
 ```
 
 
-## Chromatographic Data Visualization
+## Chromatographic Data Visualization: BPC and TIC
 
 For visualizing LC-MS data, a Base Peak Chromatogram (BPC) or Total Ion
 Chromatogram (TIC) serves as a valuable tool to assess the performance of liquid
@@ -480,6 +513,8 @@ report the maximum signal per spectrum. Conversely, when setting
 `aggregationFun = "sum"`, it sums up all intensities of a spectrum, thereby
 creating a Total Ion Chromatogram (TIC).
 
+[anna: would it be useful to briefly explain what for to use a BPC and a TIC? Maybe it's out of scope, maybe it could be helpful]
+
 ```{r bpc1, echo=TRUE}
 #' Extract and plot BPC for full data
 bpc <- chromatogram(data, aggregationFun = "max")
@@ -490,9 +525,8 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, lwd = 2, horiz = TRUE, bty = "n")
 ```
 
-After about 240 seconds no signal seems to be measured. Thus, we below filter
-the data removing that part as well as the first 10 seconds measured in the LC
-run.
+After about 240 seconds no signal seems to be measured. Thus, we filter the data
+removing that part as well as the first 10 seconds measured in the LC run.
 
 ```{r filter rt}
 #' Filter the data based on retention time
@@ -507,10 +541,9 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, lwd = 2, horiz = TRUE, bty = "n")
 ```
 
-Initially, we examined the entire Base Peak Chromatogram (BPC) and subsequently
-filtered it based on specific retention times. This not only results in a
-smaller file size but also facilitates a more straightforward interpretation of
-the BPC.
+Initially, we examined the entire BPC and subsequently filtered it based on the
+desired retention times. This not only results in a smaller file size but also
+facilitates a more straightforward interpretation of the BPC.
 
 The final plot illustrates the BPC for each sample colored by phenotype,
 providing insights on the signal measured along the retention times of each sample. It
@@ -545,7 +578,7 @@ pheatmap(ticmap, annotation_col = ann,
 
 The heatmap above reinforces what our exploration of spectra data showed, which
 is a strong separation between the QC and study samples. This is important to
-bear in mind for later analysis.
+bear in mind for later analyses.
 
 Additionally, study samples group into two clusters, cluster *I* containing
 samples *C* and *F* and cluster *II* with all other samples. Below we plot the
@@ -564,7 +597,7 @@ col[sampleData(data)$phenotype == "QC"] <- NA
 data |>
     chromatogram(aggregationFun = "sum") |>
     plot( col = col,
-     main = "BPC after filtering retention time", lwd = 1.5)
+     main = "TIC after filtering retention time", lwd = 1.5)
 grid()
 legend("topright", col = temp_col,
        legend = names(temp_col), lty = 1, lwd = 2,
@@ -574,7 +607,7 @@ legend("topright", col = temp_col,
 While over and above the TIC of all samples look similar, the samples from
 cluster I show a different signal in the retention time range from about 40 to
 160 seconds. Whether, and how strong this difference will impact the following
-analysis remains however to be determined.
+analyses remains however to be determined.
 
 
 ### Known compounds
@@ -587,14 +620,15 @@ IS was spiked to all samples. After reviewing signal of all of them, we selected
 two to guide this analysis process. However, we also advise to plot all the ions
 after each steps.
 
-Below, we generate Extracted Ion Chromatograms (EIC) for these selected *test
-ions*. By restricting the MS data to intensities within a restricted, small
-*m/z* range and a selected retention time window, EICs are expected to contain
-only signal from a single type of ion. The expected *m/z* and retention times
-for our set of IS was determined in a different experiment. Additionally, in
-cases where internal standards are not available, commonly present ions in the
-sample matrix can serve as suitable alternatives. Ideally, these compounds
-should be distributed across the entire retention time range of the experiment.
+To illustrate this, we generate Extracted Ion Chromatograms (EIC) for these
+selected *test ions*. By restricting the MS data to intensities within a
+restricted, small *m/z* range and a selected retention time window, EICs are
+expected to contain only signal from a single type of ion. The expected *m/z*
+and retention times for our set of IS was determined in a different experiment.
+Additionally, in cases where internal standards are not available, commonly
+present ions in the sample matrix can serve as suitable alternatives. Ideally,
+these compounds should be distributed across the entire retention time range of
+the experiment.
 
 ```{r EIC extract for internal standard, results='asis'}
 #' Load our list of standard
@@ -645,17 +679,17 @@ legend("topright", col = col_phenotype, legend = names(col_phenotype), lty = 1,
 ```
 
 We can observe a clear concentration difference between QCs and study samples
-for the isotope labeled cystine ion. However, the labeled methionine internal
+for the isotope labeled cystine ion. Meanwhile, the labeled methionine internal
 standard exhibits a discernible signal amidst some noise and a noticeable
 retention time shift between samples.
 
 While the artificially isotope labeled compounds were spiked to the individual
 samples, there should also be the signal from the endogenous compounds in serum
-(or plasma) samples. We thus below calculate next the mass and *m/z* of an
-*[M+H]+* ion of the endogenous cystine from its chemical formula and extract
-also the EIC from this ion. For calculation of the exact mass and the *m/z* of
-the selected ion adduct we use the `calculateMass()` and `mass2mz()` functions
-from the `r Biocpkg("MetaboCoreUtils")` package.
+(or plasma) samples. Thus, we calculate next the mass and *m/z* of an *[M+H]+*
+ion of the endogenous cystine from its chemical formula and extract also the EIC
+from this ion. For calculation of the exact mass and the *m/z* of the selected
+ion adduct we use the `calculateMass()` and `mass2mz()` functions from the `r
+Biocpkg("MetaboCoreUtils")` package.
 
 ```{r}
 #' extract endogenous cystine mass and EIC and plot.
