@@ -630,6 +630,7 @@ fData(eic_is)$mz <- intern_standard$mz
 fData(eic_is)$rt <- intern_standard$RT
 fData(eic_is)$name <- intern_standard$name
 fData(eic_is)$abbreviation <- intern_standard$abbreviation
+rownames(fData(eic_is)) <- intern_standard$abbreviation
 
 #' Summary of IS information
 cpt <- paste("Table 3.Internal standard list with respective m/z and expected",
@@ -1420,7 +1421,7 @@ feature for each test ion. The other important parameters optimized here are:
   `"phenotype"` column.
 
 ```{r}
-#' Define the settings for the.
+#' Define the settings for the param
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                           minFraction = 0.75, binSize = 0.01, ppm = 10,
                           bw = 1.8)
@@ -2266,7 +2267,7 @@ filter_dratio <- DratioFilter(threshold = 0.4,
                               qcIndex = res$phenotype == "QC",
                               studyIndex = res$phenotype != "QC",
                               mad = TRUE)
-res <- filterFeatures(res, filter = filter_dratio, assay = "norm")
+res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 ```
 
 The Dratio filter is a powerful tool to identify features that exhibit high
@@ -2987,7 +2988,7 @@ importance of proper experimental planning and the need to control for all
 potential confounding factors. For the present experiment, no disease-specific
 biomarker could be identified, but a life-style property of individuals
 suffering from this disease: coffee consumption was probably contraindicated
-to patients of the CVD group to reduce the risk of heart arrhythmias.
+to patients of the CVD group to reduce the risk of heart arrhythmia.
 
 We below plot the EIC for this feature highlighting the retention time at which
 the highest scoring MS2 spectra was recorded and create a mirror plot comparing
