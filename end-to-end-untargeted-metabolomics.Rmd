@@ -2344,10 +2344,10 @@ considerably lower technical than biological variance.
 
 Note that the `rowDratio()` and `rowRsd()` functions from the
 `r Biocpkg("MetaboCoreUtils")` package could be used to calculate the actual
-numeric values for the estimates used for filtering, to e.g. to evaluate their
-distribution in the whole data set or identify data set dependent threshold values.
+numeric values for the estimates used for filtering, e.g., to evaluate their
+distribution in the whole data set or identify data set-dependent threshold values.
 
-Finally, we will evaluate the number of features left after the filtering steps
+Finally, we evaluate the number of features left after the filtering steps
 and calculate the percentage of features that were removed.
 
 ```{r}
@@ -2379,8 +2379,8 @@ rowData(res)$qc_cv <- assay(res_qc, "norm") |>
                rowRsd()
 ```
 
-Now our data set has been preprocessed, normalized and filtered we can now start
-to evaluate the distribution of the data and estimate the variation due to
+Now that our data set has been preprocessed, normalized and filtered, we can
+start to evaluate the distribution of the data and estimate the variation due to
 biology.
 
 
@@ -2416,30 +2416,31 @@ autoplot(pca_res, data = vals_st , colour = 'phenotype', scale = 0) +
 The samples clearly separate by study group on PCA indicating that there are
 differences in the metabolite profiles between the two groups. However, what
 drives the separation on PC1 is not clear. Below we evaluate whether this could
-be explained by the other available phenotype of our study, age:
+be explained by the other available variable of our study, i.e., age:
 
 ```{r}
 vals_st <- cbind(vals, age = res$age)
 autoplot(pca_res, data = vals_st , colour = 'age', scale = 0)
 ```
 
-According to the PCA above, PC1 does not seem to be related to age. Even if
-there is some variance in the data set we can't explain at this stage, we
-proceed with the (supervised) statistical tests to identify features of
+According to the PCA above, PC1 does not seem to be related to age.
+
+Even if there is some variance in the data set we can't explain at this stage,
+we proceed with the (supervised) statistical tests to identify features of
 interest. We compute linear models for each metabolite explaining the observed
 feature abundance by the available study variables. While we could also use the
 base R function `lm()`, we utilize the `R Biocpkg("limma")` package to conduct
-the differential abundance analysis. The *moderated* test statistics
+the differential abundance analysis: the *moderated* test statistics
 [@smyth_linear_2004] provided by this package are specifically well suited for
 experiments with a limited number of replicates. For our tests we use a linear
-model `~ phenotype + age` hence explaining the abundances of one metabolite by
-the study group assignment and age of each individual. The analysis might
-benefit from inclusion of a study covariate associated with PC2 or explaining
-the variance seen in that principal component, but for the present analysis only
-the participant's age and disease association was provided.
+model `~ phenotype + age`, hence explaining the abundances of one metabolite
+accounting for the study group assignment and age of each individual. The
+analysis might benefit from inclusion of a study covariate associated with PC2
+or explaining the variance seen in that principal component, but for the present
+analysis only the participant's age and disease association was provided.
 
 Below we define the design of the study with the `model.matrix()` function and
-fit feature-wise linear models to the log2 transformed abundances using the
+fit feature-wise linear models to the log2-transformed abundances using the
 `lmFit()` function. P-values for significance of association are then calculated
 using the `eBayes()` function, that also performs the empirical Bayes-based
 robust estimation of the standard errors. See also the excellent vignette/user
@@ -2462,13 +2463,13 @@ fit <- eBayes(fit)
 ```
 
 After the linear models have been fitted, we can now proceed to extract the
-results. We will create a data frame containing the coefficients, raw and
-adjusted p-values (applying a Benjamini-Hochberg correction, e.g. `method =
+results. We create a data frame containing the coefficients, raw and
+adjusted p-values (applying a Benjamini-Hochberg correction, i.e., `method =
 "BH"` for improved control of the false discovery rate), the average intensity
 of signals in CVD and CTR samples, and an indication of whether a feature is
 deemed significant or not. We consider all metabolites with an adjusted p-value
 smaller than 0.05 to be significant, but we could also include the (absolute)
-difference in abundances in the cut-off criteria. At last we add the
+difference in abundances in the cut-off criteria. At last, we add the
 differential abundance results to the result object's `rowData()`.
 
 ```{r}
@@ -2504,11 +2505,11 @@ The histograms above show the distribution of raw and adjusted p-values. Except
 for an enrichment of small p-values, the raw p-values are (more or less)
 uniformly distributed, which indicates the absence of any strong systematic
 biases in the data. The adjusted p-values are more conservative and account for
-multiple testing which is important here as we fit a linear model to each
+multiple testing; this is important here as we fit a linear model to each
 feature and therefore perform a large number of tests which leads to a high
-chance of false positive findings. We do see that some features have very low
-p-values, indicating that they are likely to be significantly different between
-the two study groups.
+chance of false positive findings. We do see that some features have
+very low p-values, indicating that they are likely to be significantly different
+between the two study groups.
 
 Below we plot the adjusted p-values against the log2 fold change of (average)
 abundances. This volcano plot will allow us to visualize the features that are
@@ -2535,7 +2536,7 @@ The most interesting features are in the top corners in the volcano plot (i.e.,
 features with a large difference in abundance between the groups and a small
 p-value). All significant features have a negative coefficient (log2 fold change
 value) indicating that their abundance is lower in CVD samples compared to the
-control samples. These features are listed, along with their average difference
+CTR samples. These features are listed, along with their average difference
 in (log2) abundance between the compared groups, their adjusted p-values, their
 average (log2) abundance in each sample group and their RSD (CV) in QC samples
 in the table below.
@@ -2592,32 +2593,31 @@ that provide information on metabolic pathways that differentiate affected from
 healthy individuals and might hence also serve as biomarkers. However, at this
 stage of the analysis we don't know what compounds/metabolites they actually
 represent. We thus need now to annotate these signals. Annotation can be
-performed at different level of confidence
-[@sumner_proposed_2007,@schymanski_identifying_2014]. The lowest level of
-annotation, with the highest rate of false positive hits, bases on the features
-*m/z* ratios. Higher levels of annotations employ fragment spectra (MS2 spectra)
-of ions of interest requiring this however acquisition of additional data. In
-this section we will demonstrate multiple ways to annotate our significant
-features using functionality provided through Bioconductor packages. Alternative
-approaches and external software tools, which may be better suited, will also
-be discussed later in the section.
+performed at different levels of confidence
+[@sumner_proposed_2007;@schymanski_identifying_2014]. The lowest level of
+annotation, with the highest rate of false positive hits is based on the
+features *m/z* ratios. Higher levels of annotations employ fragment spectra (MS2
+spectra) of ions of interest requiring this however acquisition of additional
+data. In this section we will demonstrate multiple ways to annotate our
+significant features using functionality provided through Bioconductor packages.
+Alternative approaches and external software tools, which may be better suited,
+will also be discussed later in the section.
 
 
-## MS1 based annotation
+## MS1-based annotation
 
 Our data set was acquired using an LC-MS setup and our features are thus only
-characterized by their *m/z* and retention times. The retention time is LC-setup
-specific and, without prior data/knowledge provide only little information on
-the features' identity. Modern MS instruments have a high accuracy and the *m/z*
-values should therefore be a reliable estimates of the compound ion's
-mass-to-charge ratio. As a first approach we use thus the features' *m/z* values
-and match them against reference values, i.e. exact masses of chemical
-compounds, that are provided by a reference database, in our case the MassBank
-database. The full MassBank data is re-distributed through Bioconductor's
-`r Biocpkg("AnnotationHub")` resource, which simplifies their integration into
-reproducible R-based analysis workflows.
-Below we load the resource, list all available MassBank data sets/releases and 
-load one of them.
+characterized by their *m/z* and retention times. The retention time is
+LC-setup-specific and, without prior data/knowledge provide only little
+information on the features' identity. Modern MS instruments have a high
+accuracy and the *m/z* values should therefore be reliable estimates of the
+compound ion's mass-to-charge ratio. As first approach, we use the
+features' *m/z* values and match them against reference values, i.e., exact
+masses of chemical compounds that are provided by a reference database, in our
+case the MassBank database. The full MassBank data is re-distributed through
+Bioconductor's `r Biocpkg("AnnotationHub")` resource, which simplifies their
+integration into reproducible R-based analysis workflows. Below we load the
+resource, list all available MassBank data sets/releases and load one of them.
 
 ```{r}
 #' load reference data
@@ -2639,23 +2639,24 @@ cmps <- compounds(mb, columns = c("compound_id", "name", "formula",
 head(cmps)
 ```
 
-MassBank (as most other small compound annotation databases) provide the (exact)
-molecular mass of each compound. Since almost all small compounds are neutral in
-their natural state they need to be first converted to *m/z* values to allow
-matching against the feature's *m/z*. To calculate an *m/z* from a neutral mass,
-we need to assume which ion (adduct) might be generated from the measured
-metabolites by the employed electro-spray ionization. In positive polarity, for
-human serum samples, the most common ions will be protonated (*[M+H]+*), sodium
-ions (*[M+Na]+*) or *[M+H-NH3]*) ions. To match the observed *m/z* values
-against reference values from these potential ions we use the `matchValues()`
-function from the `r Biocpkg("MetaboAnnotation")` package with the
-`Mass2MzParam` approach, that allows to specify the types of expected ions with
-its `adducts` parameter and the maximal allowed difference between the compared
-values using the `tolerance` and `ppm` parameters. Below we first prepare the
-data frame with the significant features, set up the parameters for the matching
-and perform the comparison of the query features against the reference database
-using the `matchValues()` function. With parameter `mzColname` we specify the
-name of the column in the query data frame that contains the *m/z* values.
+MassBank (as most other small compound annotation databases) provides the
+(exact) molecular mass of each compound. Since almost all small compounds are
+neutral in their natural state, they need to be first converted to *m/z* values
+to allow matching against the feature's *m/z*. To calculate an *m/z* from a
+neutral mass, we need to assume which ion (adduct) might be generated from the
+measured metabolites by the employed electro-spray ionization. In positive
+polarity, for human serum samples, the most common ions will be protonated
+(*[M+H]+*), or bear the addition of sodium (*[M+Na]+*) or ammonium
+(*[M+H-NH3]+*) ions. To match the observed *m/z* values against reference values
+from these potential ions we use the `matchValues()` function from the `r
+Biocpkg("MetaboAnnotation")` package with the `Mass2MzParam` approach, that
+allows to specify the types of expected ions with its `adducts` parameter and
+the maximal allowed difference between the compared values using the `tolerance`
+and `ppm` parameters. Below we first prepare the data frame with the significant
+features, set up the parameters for the matching and perform the comparison of
+the query features against the reference database using the `matchValues()`
+function. With parameter `mzColname` we specify the name of the column in the
+query data frame that contains the *m/z* values.
 
 ```{r}
 #' Prepare query data frame
@@ -2727,13 +2728,13 @@ with the same chemical formula).
 Considering in addition retention times in the MS1-based annotation will
 increase their confidence, but requires additional (previous) knowledge and data such as
 recording of the retention time of the pure standard for a compound on the same
-LC setup. An alternative approach which might provide better inside on annotations and help to choose between different annotations for a same feature is to evaluate certain chemical properties of the possible matches. For instance, the LogP value, available in several databases such HMDB, provides an insight on a given compound`s polarity. As this property highly affects the interaction of the analyte with the column, it usually also directly affects separation. As an example, compounds with high logP values tend to be eluted later in systems using Reversed Phase Columns. Therefore, a comparison between an analyte`s retention time and polarity can help to rule out some possible misidentifications.
+LC setup. An alternative approach which might provide better inside on annotations and help to choose between different annotations for a same feature is to evaluate certain chemical properties of the possible matches. For instance, the LogP value, available in several databases such HMDB, provides an insight on a given compound's polarity. As this property highly affects the interaction of the analyte with the column, it usually also directly affects separation. As an example, compounds with high logP values tend to be eluted later in systems using Reversed Phase Columns. Therefore, a comparison between an analyte`s retention time and polarity can help to rule out some possible misidentifications.
 
 While being of low confidence, MS1-based annotation can provide first candidate
 annotations that could be confirmed or rejected by additional analyses.
 
 
-## MS2 based annotation
+## MS2-based annotation
 
 MS1 annotation is a fast and efficient method to annotate features and therefore
 give a first insight into the compounds that are significantly different between
@@ -2745,7 +2746,7 @@ compound.
 MS2 data can be generated through LC-MS/MS measurement in which MS2 spectra are
 recorded for ions either in a data dependent acquisition (DDA) or data
 independent acquisition (DIA) mode. Generally, it is advised to include some
-LC-MS/MS runs of e.g. QC samples or randomly selected study samples already
+LC-MS/MS runs of QC samples or randomly selected study samples already
 during the acquisition of the MS1 data that is used for quantification of the
 signals. As an alternative, or in addition, a post-hoc LC-MS/MS acquisition can
 be performed to generate the MS2 data needed for annotation. For the present
@@ -2777,7 +2778,7 @@ msms_data <- filterRt(msms_data, c(10, 240))
 ```
 
 In total we have `r length(msms_data)` LC-MS/MS data files for the control
-sample, each with a different collision energy to fragment the ions. Below we
+samples, each with a different collision energy to fragment the ions. Below we
 show the number of MS1 and MS2 spectra for each of the files.
 
 ```{r}
@@ -2794,7 +2795,7 @@ configuration of the MS instrument was set to ensure that the ions specified in
 the *inclusion list* were selected for fragmentation, even if their intensity
 might be very low. With this setting, however, most of the recorded MS2 spectra
 will represent only noise. The plot below shows the location of
-precursor ions in the *m/z* - retention time plane for the 3 files
+precursor ions in the *m/z* - retention time plane for the 3 files.
 
 ```{r eval=FALSE, include=FALSE}
 #' jo: this requires devel xcms
@@ -2807,7 +2808,7 @@ certain retention time windows.
 
 We next extract the `Spectra` object with the MS data from the data object and
 assign a new spectra variable with the employed collision energy, which we
-extract from the data objects `sampleData`.
+extract from the data object `sampleData`.
 
 ```{r}
 ms2_ctr <- spectra(msms_data)
@@ -2834,7 +2835,7 @@ We next remove also mass peaks with an *m/z* value greater or equal to the
 precursor *m/z* of the ion. This puts, for the later matching against reference
 spectra, more weight on the fragmentation pattern of ions and avoids hits based
 only on the precursor *m/z* peak (and hence a similar mass of the compared
-compounds). At last we restrict the data to spectra with at least two
+compounds). At last, we restrict the data to spectra with at least two
 fragment peaks and scale their intensities such that their sum is 1 for each
 spectrum. While similarity calculations are not affected by this scaling, it
 makes visual comparison of fragment spectra easier to read.
@@ -2887,7 +2888,7 @@ much. Alternatively, we would need to align the retention times of the second
 LC-MS/MS
 data set to those of the first.
 
-Below we first extract the *feature area*, i.e. the *m/z* and retention time
+Below we first extract the *feature area*, i.e., the *m/z* and retention time
 ranges, for the significant features.
 
 ```{r}
@@ -2931,7 +2932,7 @@ features from our differential expression analysis.
 
 We next build our reference data which we need to process the same way as our
 *query* spectra. We extract all fragment spectra from the MassBank database,
-restrict to positive polarity data (since also our experiment was acquired in
+restrict to positive polarity data (since our experiment was acquired in
 positive polarity) and perform the same processing to the fragment spectra from
 the MassBank database.
 
@@ -2944,10 +2945,10 @@ ms2_ref <- ms2_ref[lengths(ms2_ref) > 1] |>
     scalePeaks()
 ```
 
-Note that also here we could switch to a `MsBackendMemory` backend hence loading
-the full data from the reference database into memory. This could have a
-positive impact on the performance of the subsequent spectra matching, would
-however also increase the memory demand of the present analysis.
+Note that here we could switch to a `MsBackendMemory` backend hence loading the
+full data from the reference database into memory. This could have a positive
+impact on the performance of the subsequent spectra matching, however it would
+also increase the memory demand of the present analysis.
 
 Now that both the `Spectra` object for the second run and the database spectra
 have been prepared, we can proceed with the matching process. We use the
@@ -2976,13 +2977,13 @@ ms2_mtch <- matchSpectra(ms2_ctr_fts, ms2_ref, param = prm)
 ms2_mtch
 ```
 
-Thus, from the in total `r length(ms2_ctr_fts)` query MS2 spectra only
+Thus, from the total `r length(ms2_ctr_fts)` query MS2 spectra, only
 `r length(whichQuery(ms2_mtch))` could be matched to (at least) one reference
 fragment spectrum.
 
 Below we restrict the results to these matching spectra and extract all metadata
 of the query and target spectra as well as the similarity score (the complete
-list of available metadata information could be listed with the `colnames()`
+list of available metadata information can be listed with the `colnames()`
 function).
 
 ```{r}
@@ -2994,13 +2995,13 @@ ms2_mtch_res <- matchedData(ms2_mtch)
 nrow(ms2_mtch_res)
 ```
 
-As a result we got now all query-target pairs with a spectra similarity higher
-than 0.6. Similar to the MS1-based annotation also this result table contains
-redundant information: we have multiple fragment spectra per feature and also
-MassBank contains several fragment spectra for each compound, measured using
-differing collision energies or MS instruments, by different laboratories. Below
-we thus iterate over the feature-compound pairs and select for each the one with
-the highest score. As an identifier for a compound, we use its fragment
+As a result we have got now all query-target pairs with a spectra similarity
+higher than 0.6. Similar to the MS1-based annotation, also this result table
+contains redundant information: we have multiple fragment spectra per feature
+and also MassBank contains several fragment spectra for each compound, measured
+using differing collision energies or MS instruments, by different laboratories.
+Below we thus iterate over the feature-compound pairs and select for each the
+one with the highest score. As an identifier for a compound, we use its fragment
 spectra's InChI-key, since compound names in MassBank do not have accepted
 consensus/controlled vocabularies.
 
@@ -3038,17 +3039,24 @@ would result in a different fragmentation pattern. Finally, fragment spectra of
 compounds of interest might also simply not be present in the used reference
 database.
 
-Thus, combining the information from the MS1- and MS2 based annotation we can
-only annotate one feature with a considerable confidence. The feature with the
-*m/z* of 195.0879 and a retention time of 32 seconds seems to be an ion of
+Therefore, combining the information from the MS1- and MS2-based annotation we
+can only annotate one feature with a considerable confidence. The feature with
+the *m/z* of 195.0879 and a retention time of 32 seconds seems to be an ion of
 caffeine. While the result is somewhat dissapointing it also clearly shows the
 importance of proper experimental planning and the need to control for all
 potential confounding factors. For the present experiment, no disease-specific
 biomarker could be identified, but a life-style property of individuals
 suffering from this disease: coffee consumption should be reduced for this
-particular disease to reduce the risk of heart arrhythmias.(But CVD patients had lower abundance of this ion then when compared with control group: FT0845 had a fold change of -6.334. Since caffeine was decreased on the disease group, doesn`t seem that our data tells us that the disease is related to caffeine consumption (Although it does make sense biologically). Also is though to make good conclusion from such analysis, so I would replace this alst sentence by something like "but a probable life-style property that separate disease group from controls")
+particular disease to reduce the risk of heart arrhythmias.(But CVD patients had
+lower abundance of this ion then when compared with control group: FT0845 had a
+fold change of -6.334. Since caffeine was decreased on the disease group,
+doesn`t seem that our data tells us that the disease is related to caffeine
+consumption (Although it does make sense biologically). Also is though to make
+good conclusion from such analysis, so I would replace this alst sentence by
+something like "but a probable life-style property that separate disease group
+from controls")
 
-We below plot the EIC for this feature highlighting the retention time at which
+We plot below the EIC for this feature highlighting the retention time at which
 the highest scoring MS2 spectra was recorded and create a mirror plot comparing
 this MS2 spectra to the reference fragment spectra for caffeine.
 
@@ -3084,13 +3092,13 @@ legend("topleft",
 ```
 
 The plot above clearly shows the higher signal for this feature in CTR compared
-to the CVD samples. The signal is lower, but highly similar to each other for
+to CVD samples. The signal is lower, but highly similar to each other for
 the QC samples suggesting absence of strong technical noise or biases in the raw
-data of this experiment. The vertical line indicates the retention time of the
+data of this experiment [anna: I would reprhrase like this: The QC samples exhibit a lower but highly consistent signal, suggesting the absence of strong technical noise or biases in the raw data of this experiment.]. The vertical line indicates the retention time of the
 fragment spectrum with the best match against a reference spectrum. It has to be
-noted that, since the fragment spectra were measured in a separate (LC-MS/MS)
+noted that, since the fragment spectra were measured in a separate LC-MS/MS
 experiment, this should only be considered as an indication of the approximate
-retention time in which ions were fragmented in this second experiment. The
+retention time in which ions were fragmented in the second experiment. The
 fragment spectrum for this feature, shown in the upper panel of the right plot
 above is highly similar to the reference spectrum for caffeine from MassBank
 (shown in the lower panel). In addition to their matching precursor *m/z*, the
@@ -3110,8 +3118,8 @@ spectraData(target_ms2, c("collisionEnergy_text", "fragmentation_mode",
 ## External tools or alternative annotation approaches
 
 The present workflow highlights how annotation could be performed within R using
-packages from the Bioconductor project, but there are also other excellent,
-external, software that could be used as an alternative, such as SIRIUS
+packages from the Bioconductor project, but there are also other excellent
+external softwares that could be used as an alternative, such as SIRIUS
 [@duhrkop_sirius_2019], mummichog [@li_predicting_2013] or GNPS
 [@nothias_feature-based_2020] among others. To use these, the data would need to
 be exported in a format supported by these. For MS2 spectra, the data could
@@ -3120,36 +3128,46 @@ Biocpkg("MsBackendMgf")` Bioconductor package. Integration of *xcms* into
 feature-based molecular networking with GNPS is described in the [GNPS
 documentation](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/).
 
-An an alternative, or in addition, evidence for the potential matching chemical
-formula of a feature could be derived by evaluating the isotope pattern of a
-full MS1 scan of the feature. This could provide information on the isotope
-composition. Also for this, various functions such as the `itotopologues()` from
-the or `r Biocpkg("MetaboCoreUtils")` package or the functionality of the
-*envipat* R package [@loos_accelerated_2015] could be used.
+In alternative, or in addition, evidence for the potential matching chemical
+formula of a feature could be derived by evaluating the isotope pattern of its
+full MS1 scan. This could provide information on the isotope composition. Also
+for this, various functions such as the `itotopologues()` from the or `r
+Biocpkg("MetaboCoreUtils")` package or the functionality of the *envipat* R
+package [@loos_accelerated_2015] could be used.
 
 
 # Summary
 
-With the present tutorial we describe an end-to-end workflow for a LC-MS based
+With the present tutorial we describe an end-to-end workflow for LC-MS based
 untargeted metabolomics experiments, conducted entirely within R using packages
 from the Bioconductor project or base R functionality. While other excellent
-software exist to perform similar analyses, the power of a R-based workflow is
+softwares exist to perform similar analyses, the power of an R-based workflow is
 the possibility to adapt it to the individual data sets or research questions
-and to build reproducible workflows respectively documents. Due to space
-restrictions we don't provide a comprehensive listing of methodology for the
-individual analysis steps. More advanced options or approaches would be
-available e.g. for normalization of the data, which will however also be heavily
-dependent on the size and properties of the analyzed data set, as well as for
-annotation of the features.
+and to build reproducible workflows respectively documents [anna: I don't
+understand this sentence (I am sorry, it may be the lack of caffeine on my part
+XD)]. Due to space restrictions we don't provide a comprehensive listing of
+methodologies for the individual analysis steps. More advanced options or
+approaches would be available, e.g., for normalization of the data, which will
+however also be heavily dependent on the size and properties of the analyzed
+data set, as well as for annotation of the features.
 
 As a result we found in the present analysis a set of features with significant
 abundance differences between the compared groups. From these we could however
 only reliably annotate a single feature. This low proportion of annotated
 signals is however not uncommon for untargeted metabolomics experiments and
-reflects the need for more comprehensive, and reliable, reference annotation
+reflects the need for more comprehensive and reliable reference annotation
 libraries. Differences observed in the present data sets are related to the
 lifestyle of individuals rather then to the pathological properties of the
 investigated disease.
+
+[anna: I would move things around for this last paragraph and rephrase it as
+follows: As a result, we found in the present analysis a set of features with
+significant abundance differences between the compared groups. From these we
+could however only reliably annotate a single feature, that related to the
+lifestyle of individuals rather then to the pathological properties of the
+investigated disease. This low proportion of annotated signals is however not
+uncommon for untargeted metabolomics experiments and reflects the need for more
+comprehensive and reliable reference annotation libraries.]
 
 
 # Session information
