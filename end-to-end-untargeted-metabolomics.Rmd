@@ -1784,7 +1784,7 @@ save(res, file = "SumExp.RData")
 
 # Data normalization
 
-After preprocessing, data normalization or scaling might needed to be applied to
+After preprocessing, data normalization or scaling might need to be applied to
 remove any technical variances from the data. While simple approaches like
 median scaling can be implemented with a few lines of R code, more advanced
 normalization algorithms are available in packages such as Bioconductor's
@@ -1798,7 +1798,7 @@ groups[@broadhurst_guidelines_2018]:
 - Variances introduced by sample collection and initial processing, which can
   include differences in sample amounts. This type of bias is expected to be
   sample-specific and affect all signals in a sample in the same way. Methods
-  like median scaling, loess or quantiles normalization can adjust for this
+  like median scaling, LOESS or quantiles normalization can adjust this
   bias.
 
 - Signal drifts along measurement of samples from an experiment. Reasons for
@@ -1813,7 +1813,9 @@ groups[@broadhurst_guidelines_2018]:
   approaches can be used. The latter can for example be performed using the
   `adjust_lm()` function from the `r Biocpkg("MetaboCoreUtils")` package.
 
-- Batch-related biases. This comprises any noise that is specific to a larger
+  [anna: I would slightly rephrase to make this point clearer and easier to follow. Reasons for such drifts can be related to aging of the instrumentation used (columns, detector), but also to changes in metabolite abundances and characteristics due to reactions and modifications, such as oxidation. These changes are expected to affect more the samples measured later in a run rather than the ones measured at the beginning. For this reason, this bias can play a major role in large experiments...]
+
+- Batch-related biases. These comprise any noise that is specific to a larger
   set of samples, which can be the set of samples measured in one LC-MS
   measurement run (i.e. from one analysis plate) or samples measured using a
   specific batch of reagents. This noise is assumed to affect all samples in one
@@ -1825,17 +1827,17 @@ experiment. Therefore, data normalization should be chosen carefully based on
 experimental design, statistical aims, and the balance of accuracy and precision
 achieved through the use of auxiliary information.
 
-Sample preparation biases could be evaluated using internal standards, depending
-however also when they were added to the sample mixes during sample
-processing. Repeated measurements of QC samples (usually a pool of the study
-samples) on the other hand allows to estimate and correct for LC-MS specific
+Sample preparation biases can be evaluated using internal standards, depending
+however also on when they were added to the sample mixes during sample
+processing. Repeated measurements of QC samples [anna: this has been stated already and I feel it can be omitted at this point (usually a pool of the study
+samples)] on the other hand allows to estimate and correct for LC-MS specific
 biases. Also, proper planning of an experiment, such as measurement of study
 samples in random order, can largely avoid biases introduced by most of the
 above mentioned sources of variance.
 
 In this workflow we present some tools to assess data quality and evaluate need
-for normalization as well options for normalization. For space reasons we do not
-provide solutions to adjust for all possible sources of variation.
+for normalization as well as options for normalization. For space reasons we are
+not able to provide solutions to adjust for all possible sources of variation.
 
 
 ## Initial quality assessment
@@ -1852,7 +1854,10 @@ for a specific feature. The uniform distribution is defined with two parameters
 (minimum and maximum) and all values between them have an equal probability of
 being selected.
 
-Below we impute missing values with that approach and add the resulting data
+[anna: I wouldn't start with PCA right away. First I would talk about the issues that we still have, then introduce PCA in the next section.
+Even though we preprocessed the data, some issues such as missing values still persist and need to be imputed. We assume that most of these missing values ...]
+
+Below we impute missing values with this approach and add the resulting data
 matrix as a new *assay* to our result object.
 
 ```{r}
@@ -1883,9 +1888,9 @@ space. In the context of LC-MS data, PCA can be used to look for overall biases
 in batch, sample, injection index, ect, ... It is important to note that PCA is
 a linear method and might not be able to detect all biases in the data.
 
-Before plotting the PCA, we will log2 transform, center and scale the data. The
-log2 transformation is applied to stabilize the variance and centering to remove
-dependency on absolute abundances.
+Before plotting the PCA, we apply a log2 transform, center and scale the data.
+The log2 transformation is applied to stabilize the variance while centering to
+remove dependency on absolute abundances.
 
 ```{r unsupervised checks1, fig.height=4, fig.width=8, include=TRUE}
 #' Log2 transform and scale data
@@ -1948,11 +1953,12 @@ legend("topright", col = col_phenotype,
        cex = 0.8,  bty = "n")
 ```
 
-The upper part of the plot show that the gap filling steps allowed to rescue
-a consequent number of *NAs* and allowed us to have a more equivalent number of
-feature values per sample. As we assume that every sample should have a similar
-amount of features detected. Additionally we observe that, on average, the
-signal distribution from the individual samples is very similar.
+The upper part of the plot show that the gap filling steps allowed to rescue a
+substantial number of *NAs* and allowed us to have a more consistent number of
+feature values per sample. This consistency aligns with our asspumption that
+every sample should have a similar amount of features detected. Additionally we
+observe that, on average, the signal distribution from the individual samples is
+very similar. [anna: I reprhased it a bit because I struggled a bit to understand what was meant. I hope I left the meaning that was first intended.]
 
 An alternative way to evaluate differences in abundances between samples are
 *relative log abundance* (RLA) plots [@de_livera_normalizing_2012]. An RLA value
@@ -1960,12 +1966,12 @@ is the abundance of a feature in a sample relative to the median abundance of
 the same feature across multiple samples. We can discriminate between *within
 group* and *across group* RLAs, depending whether the abundance is compared
 against samples within the same sample group or across all samples. Within group
-RLA assess the tightness of replicate within groups and should have a median
-close to zero and low variation around it. When used across groups, they allow
-to compare behavior between groups. Generally, between-sample differences can be
-easier spotted using RLA plots. Below we calculate and visualize within group
-RLA values using the `rowRla()` function from the `r Biocpkg("MsCoreUtils")`
-package defining with parameter `f` the sample groups.
+RLA plots assess the tightness of replicates within groups and should have a
+median close to zero and low variation around it. When used across groups, they
+allow to compare behavior between groups. Generally, between-sample differences
+can be easily spotted using RLA plots. Below we calculate and visualize within
+group RLA values using the `rowRla()` function from the `r
+Biocpkg("MsCoreUtils")` package defining with parameter `f` the sample groups.
 
 ```{r rla-plot raw and filled1, fig.cap = "RLA plot for the raw data and filled data. Note: outliers are not drawn."}
 par(mfrow = c(1, 1), mar = c(3.5, 4.5, 2.5, 1))
@@ -1990,7 +1996,7 @@ the distribution of signals across samples is comparable, some differences seem
 to be present that require a between sample normalization.
 
 
-### Internal standard
+### Internal standards
 
 Depending when internal standards (IS) are added to the sample mixes, they allow
 evaluation of variances introduced by the subsequent processing and analysis
@@ -2001,14 +2007,12 @@ extraction and any subsequent steps, can however not be used to infer
 conclusions on performance or differences on the original sample collection
 (blood drawing, storage, plasma creation).
 
-We loaded before the *m/z* and expected retention times for the list of 20 IS,
-now we need to identify features representing signal from these. Thus, we again
-use the `matchValues()` function from the `r Biocpkg("MetaboAnnotation")`
+We have already loaded the *m/z* and expected retention times for the list of 20
+IS, now we need to identify features from the corresponding signal. Thus, we
+again use the `matchValues()` function from the `r Biocpkg("MetaboAnnotation")`
 package. With parameters `mzColname` and `rtColname` we specify the column names
 in the query (our IS) and target (features detected in the data set) that
-contain the *m/z* and retention time values on which to match entities.
-
-We then
+contain the *m/z* and retention time values on which to match entities. We then
 filter these *matches* to only keep IS that match with a single feature using
 the `filterMatches()` function in combination with `SingleMatchParam`.
 
@@ -2100,13 +2104,13 @@ groups and compare the behavior between groups.
 ### Principal Component Analysis
 
 ```{r fig.width=7, include=TRUE}
-#' Data before
+#' Data before normalization
 vals_st <- cbind(vals, phenotype = res$phenotype)
 pca_raw <- autoplot(pca_res, data = vals_st,
                     colour = 'phenotype', scale = 0) +
     scale_color_manual(values = col_phenotype)
 
-#' Data after
+#' Data after normalization
 vals_norm <- apply(assay(res, "norm"), MARGIN = 1, na_unidis) |>
     log2() |>
     scale(center = TRUE, scale = TRUE)
@@ -2147,6 +2151,8 @@ correct for biological variance and only technical.
 We compare the RLA plots before and after between-sample normalization to
 evaluate its impact on the data.
 
+[anna: for the figure below I would use the same settings as the RLA figure in the intensity evaluation section (e.g., legend in topright position, same width)]
+
 ```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
 par(mfrow = c(2, 1), mar = c(3.5, 4.5, 3, 1))
 
@@ -2175,10 +2181,12 @@ and medians for all samples are now closer to zero.
 
 ### Coefficient of variation
 
+[anna: for the next section I would first state that CV=RSD, as it already, then I would choose one of the two and keep it consistent throughout the whole section]
+
 We next evaluate the coefficient of variation (CV, also referred to as *relative
 standard deviation* RSD) for features across samples from either QC or study
 samples. In QC samples, the CV would represent technical noise, while in study
-samples it would include in addition also expected biological differences. Thus,
+samples it would include also expected biological differences. Thus,
 normalization should reduce the CV in QC samples, while only slightly reducing
 the CV in study samples. The CV (RSD) is calculated below using the `rowRsd()`
 function from the `r Biocpkg("MetaboCoreUtils")` package. By setting `mad =
@@ -2274,10 +2282,10 @@ for data filtering in untargeted metabolomic studies, please refer to [@broadhur
 
 We first restrict the data set to features for which a chromatographic peak was
 detected in at least 2/3 of samples of at least one of the study samples groups.
-This ensures the statistical tests performed later on the study samples being
-performed on *reliable* signal. Also, with this filter we remove features that
-were mostly detected in QC samples, but not the study samples. Such filter can
-be performed with `filterFeatures()` function from the `r Biocpkg("xcms")`
+This ensures the statistical tests carried out later on the study samples are
+being performed on *reliable* signal. Also, with this filter we remove features
+that were mostly detected in QC samples, but not the study samples. Such filter
+can be performed with `filterFeatures()` function from the `r Biocpkg("xcms")`
 package with the `PercentMissingFilter` setting. The parameters of this filer:
 
 - `threshold`: defines the maximal acceptable percentage of samples with missing
@@ -2308,10 +2316,11 @@ for pre-filtering, on the basis that they represent similar bio-fluids to our
 study samples, and thus, we anticipate observing relatively similar metabolites
 affected by similar measurement biases.
 
-We therefore evaluate the *dispersion ratio* (Dratio) [@broadhurst_guidelines_2018]
-for all features in the data set. Using the same function as above but this
-time with the `DratioFilter` parameter. More filter exist for this function and
-we invite the user to explore them as to decide what is best for their dataset.
+We therefore evaluate the *dispersion ratio* (Dratio)
+[@broadhurst_guidelines_2018] for all features in the data set. We accomplish
+this task using the same function as above but this time with the `DratioFilter`
+parameter. More filters exist for this function and we invite the user to
+explore them as to decide what is best for their dataset.
 
 ```{r}
 #' Compute and filter based on the Dratio
