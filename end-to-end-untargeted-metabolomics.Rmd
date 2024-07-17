@@ -57,7 +57,7 @@ metabolites and their relative abundance in biological samples. Liquid
 Chromatography (LC) is a separation technique which relies on the
 different interactions of the analytes towards a chromatographic column - the
 stationary phase - and the eluent of the analysis - the mobile phase. The
-stronger the affinity of a analyte to the stationary phase - dictated by
+stronger the affinity of an analyte to the stationary phase - dictated by
 polarity, size, charges and other parameters - the longer it will take for the
 compound to leave the column and be detected by our coupled technique - the 
 Mass Spectrometer.
@@ -99,7 +99,9 @@ workflows. We demonstrate how the various algorithms can be adapted to
 the particular data set and how various R packages can be seamlessly integrated
 to ensure efficient and reproducible processing. The present workflow covers all
 steps for LC-MS/MS data analysis, from preprocessing, data normalization,
-differential abundance analysis to the annotation of the significant *features*. 
+differential abundance analysis to the annotation of the significant *features*
+i.e., collections of signals that have the same retention time and 
+mass-to-charge ratios pertaining to the same ions.
 Various options for visualizations as well as quality assessment are
 presented for all analysis steps.
 
@@ -108,17 +110,25 @@ presented for all analysis steps.
 In this workflow two datasets are utilized, an LC-MS-based (MS1 level only) 
 untargeted metabolomics data set to quantify small polar metabolites in human 
 plasma samples and an additional LC-MS/MS data set of selected samples from the
-former study for the identification/annotation of its significant features. The
-samples used here were randomly selected from a larger study for the
+former study for the identification/annotation of its significant features. 
+The samples used here were randomly selected from a larger study for the
 identification of metabolites with differences in abundances between
 individuals suffering from a cardiovascular disease (CVD) and healthy controls 
-(CTR). The subset analyzed here comprises data for three CVD and three CTR as
+(CTR).The subset analyzed here comprises data for three CVD and three CTR as
 well as four quality control (QC) samples. The QC samples represent a pool of
 serum samples from a large cohort and were repeatedly measured throughout the
 experiment to monitor stability of the signal.
 
 The data and metadata for this workflow are accessible on the MetaboLight 
 database under the ID: [ID].
+
+The detailed materials and method used for the analysis of the samples can 
+also be found on the metabolight database. 
+As it is especially pertinent for the analysis and the chosen parameters, we
+want to highlight that the samples were analyzed using ultra-high-performance
+liquid chromatography (UHPLC) coupled to a Q-TOF mass spectrometer 
+(TripleTOF 5600+). The chromatographic separation was based on hydrophilic
+interaction liquid chromatography (HILIC).
 
 # Workflow description
 
@@ -131,14 +141,6 @@ packages could be used for different steps and some examples are mentioned
 throughout the workflow.  [jo: I'll include some of these maybe later. It would
 be key to justify why this workflow is comprehensive] [Phili: I can also talk
 in the data import part about the format import/export when we are done]
-
-[anna: maybe it would be useful to explain in a short sentence what a feature
-is, either in the paragraph above, where it appears for the first time, or in
-the data description section, where it is also mentioned (I am afraid it's not
-immediately clear what a feature is). Something like this ..... significant
-feature, i.e., collections of signals that have the same retention time and
-mass-to-charge ratios pertaining to the same ions. Feel free to ignore this or
-to modify the definition to suit the context as best as possible.]
 
 Our workflow is therefore based on the following dependencies:
 
@@ -326,14 +328,7 @@ spectra(data) |>
 
 Data obtained from LC-MS experiments are typically analyzed along the retention
 time axis, while MS data is organized by spectrum, orthogonal to the retention
-time axis. The `chromatogram()` function facilitates the extraction of
-intensities along the retention time. However, access to chromatographic
-information is currently not as efficient and seamless as it is for spectral
-information. Work is underway to develop/improve the infrastructure for
-chromatographic data through a new `Chromatograms` object aimed to be as
-flexible and user-friendly as the `Spectra` object.
-
-[anna: the chromatogram paragraph seems to be a bit out of context here (personal opinion, feel free to just ignore it). I would maybe put the emphasis on the difference in data organization, while keeping the chromatogram descprition for a later section (as it is already). Maybe just write a reminder in the later section that the data are organized differently for LC and MS data.]
+time axis. 
 
 # Data visualization and general quality assessment
 
@@ -347,11 +342,9 @@ MS data. For a general overview of our LC-MS data, we can:
   abundant ions of a sample.
 - Aggregate mass peak intensities for each spectrum, resulting in the Base Peak
   Chromatogram (BPC). The BPC shows the highest measured intensity for each
-  distinct retention time (hence spectrum) and is thus orthogonal to the BPS,
-  [anna: I feel this is redundant, since it is written just a few lines above. which reports for each *m/z* the highest intensity along the retention time
-  range.]
-- Sum mass peak intensities for each spectrum to create a Total Ion Chromatogram
-  (TIC).
+  distinct retention time (hence spectrum) and is thus orthogonal to the BPS.
+- Sum the mass peak intensities for each spectrum to create a Total Ion 
+  Chromatogram (TIC).
 - Compare the BPS of all samples in an experiment to evaluate similarity of
   their ion content.
 - Compare the BPC of all samples in an experiment to identify samples with
@@ -359,9 +352,9 @@ MS data. For a general overview of our LC-MS data, we can:
 
 In addition to such general data evaluation and visualization, it is also
 crucial to investigate specific signal of e.g. internal standards or
-compounds/ions known to be present in the samples.
-
-[anna: I believe it could be beneficial to add why we want to look at the internal stadards, like: "By providing a reliable reference, internal standards help achieve consistent and accurate analytical results."]
+compounds/ions known to be present in the samples. By providing a reliable
+reference, internal standards help achieve consistent and accurate analytical
+results.
 
 
 ## Spectra Data Visualization: BPS
@@ -393,7 +386,7 @@ processingChunkSize(spectra(data)) <- chunksize
 
 We can now generate BPS for each sample and `plot()` them.
 
-```{r bps, fig.width = 12, fig.height = 7, fig.cap = "Base peak spectra for the 10 samples of the experiment."}
+```{r bps, eval=FALSE, fig.cap=, fig.height=7, fig.width=12, include=FALSE}
 #' Combining all spectra per file into a single spectrum
 bps <- spectra(data) |>
     bin(binSize = 0.01) |>
@@ -434,12 +427,9 @@ pheatmap(sim_matrix, annotation_col = ann,
 ```
 
 We get a first glance at how our different samples distribute in terms of
-similarity. The heatmap above shows that the QC samples are quite different from
-the study samples. This is expected as the QC samples are a pool of serum
-samples from a larger cohort, while the study samples are plasma samples from
-participants from a different study (and sample collection).
-
-[anna: I think that the sentence above is redundant, as it is something clearly explained above. I would maybe emphasize that the heatmap confirms what was seen with the BPS, with one cluster for the QCs and one for the study samples, owing to the fact that they come from different cohorts/experiments/sample collections. Something along the lines of "The heatmap confirms the observations made with the BPS, showing distinct clusters for the QCs and the study samples, owing to the different matrices and sample collections."]
+similarity. The heatmap confirms the observations made with the BPS, showing
+distinct clusters for the QCs and the study samples, owing to the different
+matrices and sample collections.
 
 It is also strongly recommended to delve deeper into the data by exploring it in
 more detail. This can be accomplished by carefully assessing our data and
@@ -456,13 +446,9 @@ plotSpectra(spec1, main = "QC sample")
 plotSpectra(spec2, main = "CTR sample")
 ```
 
-There is indeed a significant difference in peak distribution and intensity
-between the QC sample and the CTR sample. This further illustrates the apparent
-difference in signal between the QC and study samples from this data set. [anna:
-I feel the paragraph above could be combined in one sentence not to sound too
-repetitive: The significant dissimilarities in peak distribution and intensity
-confirm the difference in composition between QCs and study samples.] We next
-compare a full MS1 spectrum from a CVD and a CTR sample.
+The significant dissimilarities in peak distribution and intensity confirm the
+difference in composition between QCs and study samples. We next compare a full
+MS1 spectrum from a CVD and a CTR sample.
 
 ```{r}
 #' Accessing a single spectrum - comparing CVD and CTR
@@ -506,6 +492,13 @@ data.frame(intensity = unlist(intensity(filt_spec)),
 
 ## Chromatographic Data Visualization: BPC and TIC
 
+The `chromatogram()` function facilitates the extraction of
+intensities along the retention time. However, access to chromatographic
+information is currently not as efficient and seamless as it is for spectral
+information. Work is underway to develop/improve the infrastructure for
+chromatographic data through a new `Chromatograms` object aimed to be as
+flexible and user-friendly as the `Spectra` object.
+
 For visualizing LC-MS data, a BPC or TIC serves as a valuable tool to assess 
 the performance of liquid chromatography across various samples in an
 experiment. In our case, we extract the BPC from our data to create such a plot.
@@ -517,8 +510,6 @@ By setting the parameter `aggregationFun = "max"`, we instruct the function to
 report the maximum signal per spectrum. Conversely, when setting
 `aggregationFun = "sum"`, it sums up all intensities of a spectrum, thereby
 creating a TIC.
-
-[anna: would it be useful to briefly explain what for to use a BPC and a TIC? Maybe it's out of scope, maybe it could be helpful]
 
 ```{r bpc1, echo=TRUE}
 #' Extract and plot BPC for full data
@@ -650,6 +641,7 @@ fData(eic_is)$mz <- intern_standard$mz
 fData(eic_is)$rt <- intern_standard$RT
 fData(eic_is)$name <- intern_standard$name
 fData(eic_is)$abbreviation <- intern_standard$abbreviation
+rownames(fData(eic_is)) <- intern_standard$abbreviation
 
 #' Summary of IS information
 cpt <- paste("Table 3.Internal standard list with respective m/z and expected",
@@ -722,14 +714,16 @@ between the endogenous and non-endogenous compound.
 
 # Data preprocessing
 
-Preprocessing stands as the inaugural step in the analysis of untargeted LC-MS. 
-The primary objective of preprocessing is the quantification of signals from 
-ions measured in a sample, addressing any potential retention time drifts 
+Preprocessing stands as the inaugural step in the analysis of untargeted LC-MS.
+It is characterized by 3 main stages: chromatographic peak detection, retention
+time shift correction (alignment) and correspondence which results in features 
+defined.  The primary objective of preprocessing is the quantification of
+signals from ions measured in a sample, addressing any potential retention time drifts 
 between samples, and ensuring alignment of quantified signals across samples 
 within an experiment. The final result of LC-MS data preprocessing is a numeric 
 matrix with abundances of quantified entities in the samples of the experiment.
 
-[anna: silly question: isn't the goal of preprocessing to align AND group all signals pertaining to a certain ion in a feature? And then obtain the matrix with the abundances]
+[anna: silly question: isn't the goal of preprocessing to align and group all signals pertaining to a certain ion in a feature? And then obtain the matrix with the abundances][phili: I actually really like anna's simple definition. what do you think ?]
 
 ## Chromatographic peak detection
 
@@ -743,7 +737,7 @@ The preferred algorithm in this case, *CentWave*, utilizes continuous wavelet
 transformation (CWT)-based peak detection [@tautenhahn_highly_2008]. This
 method is known for its effectiveness in handling non-Gaussian shaped
 chromatographic peaks or peaks with varying retention time widths, which
-are commonly encountered in hydrophilic interaction liquid chromatography (HILIC) separations. [anna: should HILIC be quickly mentioned in the introduction? Just the acronym, because the description is already there. Otherwise I would just remove HILIC (and leave only LC) since it is the only time it appears in the whole document]
+are commonly encountered in HILIC separations.
 
 Below we apply the CentWave algorithm with its default settings on the extracted
 ion chromatogram for cystine and methionine ions and evaluate its results.
@@ -752,6 +746,7 @@ ion chromatogram for cystine and methionine ions and evaluate its results.
 #' Use default Centwave parameter
 param <- CentWaveParam()
 
+#' Look at the default parameters
 param
 
 #' Evaluate for Cystine
@@ -762,8 +757,6 @@ chromPeaks(cystine_test)
 met_test <- findChromPeaks(eic_met, param = param)
 chromPeaks(met_test)
 ```
-
-[anna: I remember saying this during our teams meeting, but I think that the main parameters of CentWaveParam could be made explicit, even if they are the default, to make the users familiarize with the algorithm (as written below)]
 
 While *CentWave* is a highly performant algorithm, it requires to be costumized
 to each dataset. This implies that the parameters should be fine-tuned based on
@@ -874,10 +867,11 @@ legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1, bty = "n")
 ```
 
-Our custom settings seem thus to be suitable for our dataset [anna: it is not clear why the settings are suitable. Is it the detection of only one well-defined peak per compound? I would write e short explanation as to why they are suitable]. We now proceed and
-apply them to the entire dataset, extracting EICs again for the same ions to
-evaluate and confirm that chromatographic peak detection worked as
-expected. Note:
+We can see a peak seems ot be detected in each sample for both ions. This
+indicates that our custom settings seem thus to be suitable for our dataset.
+We now proceed and apply them to the entire dataset, extracting EICs again for
+the same ions to evaluate and confirm that chromatographic peak detection
+worked as expected. Note:
 
 - We revert the value for parameter `snthresh` to its default,
   because, as mentioned above, background noise estimation is more reliable when
@@ -1036,19 +1030,18 @@ Additional options to evaluate the results of the chromatographic peak detection
 can be implemented using the `plotChromPeaks()` function or by summarizing the
 results using base R commands. 
 
-[anna: since plotChromPeaks is mentioned, would it be useful to show an example? Or is it out of scope?]
-
 
 ## Retention time alignment
 
 Despite using the same chromatographic settings and conditions retention time
-shifts are unavoidable. [anna: I think it might be useful to add why we have these shifts (from my thesis: The purpose of the alignment step is to remove shifts in retention time that normally occur during LC-MS measurements. In fact, the performance of the instrument can change over time, for example due to small variations in environmental conditions, such as temperature and pressure.)] These will be
-generally small if samples are measured within the same batch/measurement run,
-but can be considerable if data of an experiment was acquired across a longer
-time period.
+shifts are unavoidable. Indeed, the performance of the instrument can change
+over time, for example due to small variations in environmental conditions, 
+such as temperature and pressure. These shifts will be generally small if
+samples are measured within the same batch/measurement run, but can be
+considerable if data  of an experiment was acquired across a longer time period.
 
 To evaluate the presence of a shift we extract and plot below the BPC from the 
-QC samples. [anna: Here I would emphasize that alignment is performed first on the POOL samples, then, based on their adjustment, it is performed on the whole dataset (also from my thesis: To accomplish this task we proceed in two steps: first we  select only the POOL samples of our dataset and do a first alignment on these, using the so-called *hook peaks*. In this way we can assume a linear shift in time, since we are always measuring the same sample in different regular time intervals. After calculating how much to adjust the retention time in these samples, we apply this shift also on the study samples.)]
+QC samples.
 
 ```{r}
 #' Get QC samples
@@ -1066,7 +1059,23 @@ intervals during the measurement run of the experiment and were all measured on
 the same day. Still, small shifts can be observed, especially in the region
 between 100 and 150 seconds. To facilitate proper correspondence of signals
 across samples (and hence definition of the LC-MS features), it is essential to
-minimize these differences in retention times. [anna: this is the first time that we mention correspondence. Is it obvious to everyone or would it be good to introduce it above? For example where we explain the purpose of preprocessing]
+minimize these differences in retention times.
+
+Theoretically, we proceed in two steps: first we  select only the QC samples of
+our dataset and do a first alignment on these, using the so-called
+*anchor peaks*. In this way we can assume a linear shift in time, since we are
+always measuring the same sample in different regular time intervals. Despite 
+having external QCs in our data set, we still use the subset-based alignment 
+assuming retention time shifts to be independent of the different sample matrix 
+(human serum or plasma) and instead are mostly instrument-dependent. Note that 
+it would also be possible to manually specify anchor peaks, respectively their
+retention times or to align a data set against an external, reference, data
+set. More information is provided in the vignettes of the `r Biocpkg("xcms")`
+package.
+
+After 
+calculating how much to adjust the retention time in these samples, we apply 
+this shift also on the study samples.
 
 In *xcms* retention time alignment can be performed using the `adjustRtime()`
 function with an alignment algorithm. For this example we use the *PeakGroups*
@@ -1078,9 +1087,7 @@ anchor peaks for the alignment.
 
 For the initial correspondence, we use the *PeakDensity* approach
 [@smith_xcms_2006] that groups chromatographic peaks with similar *m/z* and
-retention time into LC-MS features. An LC-MS feature, or in short feature,
-represents signal from the same type of ion across all samples of a data
-set [anna: I think this definition should be given at the beginning (see my previous comment)]. 
+retention time into LC-MS features.
 The parameters for this algorithm, that can be configured using the
 `PeakDensityParam` object, are `sampleGroups`, `minFraction`, `binSize`, `ppm`
 and `bw`. 
@@ -1114,11 +1121,9 @@ also on parameters `sampleGroups` and `minFraction`:
 
 For the initial correspondence, parameters don't need to be fully
 optimized. Selection of dataset-specific parameter values is described in more
-detail in the next section. [anna: I think this
-is not needed; it's immediately after this line and it's pretty clear. in more
-detail in the following section.] For our dataset, we use small values for
+detail in the next section. For our dataset, we use small values for
 `binSize` and `ppm` and, importantly, also for parameter `bw`, since for our
-data set an ultra high performance (UHP) LC setup was used [anna: maybe I have been out of this field for too long, but I don't see the connection between UHPLC and choice of small values for these parameters. Is it something empirical?]. For `minFraction` we
+data set an ultra high performance (UHP) LC setup was used [anna: maybe I have been out of this field for too long, but I don't see the connection between UHPLC and choice of small values for these parameters. Is it something empirical? phili: jo can you help me here ?]. For `minFraction` we
 use a high value (0.9) to ensure only features are defined for chromatographic
 peaks present in almost all samples of one sample group (which can then be used
 as anchor peaks for the actual alignment). We will base the alignment later on
@@ -1168,12 +1173,7 @@ algorithm are:
   eventually adapt parameters if the result was not satisfactory.
 
 Below we perform the alignment of our data set based on retention times of
-anchor peaks defined in the subset of QC samples. Despite having external QCs
-in our data set, we still use the subset-based alignment assuming retention time
-shifts to be independent of the different sample matrix (human serum or plasma).
-[anna: this needs to be explained a bit better and I think that it can be done by just explaining that the retention time shifts are mostly instrument-dependent. Otherwise it becomes difficult to justify the fact that we take samples from another experiment/matrix and adjust the study samples based on these].
-
-[anna: I think the explanation in the previous paragraph should be moved at the beginning of the alignment section to explain the workflow of this step. This way, the readers know what to expect and have a complete overview. Here I would just state what we are doing]
+anchor peaks defined in the subset of QC samples.
 
 ```{r}
 #' Define parameters of choice
@@ -1187,12 +1187,7 @@ data <- adjustRtime(data, param = param)
 ```
 
 Alignment adjusted the retention times of all spectra in the data set, as well
-as the retention times of all identified chromatographic peaks. [anna: I would move this sentence up, where anchor peaks are first described. It would be a nice addendum and it would improve the flow of the text.
-Note that it
-would also be possible to manually specify anchor peaks, respectively their
-retention times or to align a data set against an external, reference, data
-set. More information is provided in the vignettes of the `r Biocpkg("xcms")`
-package.]
+as the retention times of all identified chromatographic peaks.
 
 Once the alignment has been performed, the user should evaluate the results
 using the `plotAdjustedRtime()` function. This function visualizes the
@@ -1312,11 +1307,10 @@ chromatographic peaks with similar *m/z* (+/- 50 ppm) and retention time (+/-
 10 seconds) to the internal standard's values. With parameters `mzColname` and
 `rtColname` we specify the column names in the query (our IS) and target
 (chromatographic peaks) that contain the *m/z* and retention time values on
-which to match entities. We perform this matching separate for each sample and
-select for each internal standard, in each sample, using the `filterMatches()` 
-and `SingleMatchParam`, the chromatographic peak with the highest intensity.
-
-[anna: I feel the previous sentence is a bit convoluted and not immediate to understand, so I would split it up like this: We perform this matching separately for each sample. For each internal standard in every sample, we use the `filterMatches()` function and the `SingleMatchParam()` parameter to select the chromatographic peak with the highest intensity.]
+which to match entities. We perform this matching separately for each sample. 
+For each internal standard in every sample, we use the `filterMatches()`
+function and the `SingleMatchParam()` parameter to select the chromatographic
+peak with the highest intensity.
 
 ```{r}
 #' Extract the matrix with all chromatographic peaks and add a column
@@ -1458,7 +1452,7 @@ feature for each test ion. The other important parameters optimized here are:
   `"phenotype"` column.
 
 ```{r}
-#' Define the settings for the correspondence
+#' Define the settings for the param
 param <- PeakDensityParam(sampleGroups = sampleData(data)$phenotype,
                           minFraction = 0.75, binSize = 0.01, ppm = 10,
                           bw = 1.8)
@@ -1577,12 +1571,11 @@ measured in both samples, thus, reporting a missing value would not be correct
 in this example. The signal for this feature is very low, which is the most likely
 reason peak detection failed. To rescue signal in such cases, the 
 `fillChromPeaks()` function can be used with the `ChromPeakAreaParam` approach.
-This method defines for each feature, based on the detected peaks, the *m/z* -
-retention time area in which signal for the respective ion is expected, and 
-integrates, in samples with missing values for that feature, all intensities
-within the area. [anna: like above, I think this sentence is a bit long and convoluted and I would split it. This method defines an *m/z*-retention time area for each feature based on detected peaks, where the signal for the respective ion is expected. It then integrates all intensities within this area in samples that have missing values for that feature.] This is then reported as feature
-This is then reported as feature abundance. Below we apply
-this method using the default parameters.
+This method defines an *m/z*-retention time area for each feature based on
+detected peaks, where the signal for the respective ion is expected. It then
+integrates all intensities within this area in samples that have missing
+values for that feature. This is then reported as feature abundance. 
+Below we apply this method using the default parameters.
 
 ```{r}
 #' Fill in the missing values in the whole dataset
@@ -1794,18 +1787,17 @@ groups[@broadhurst_guidelines_2018]:
   bias.
 
 - Signal drifts along measurement of samples from an experiment. Reasons for
-  such drifts can be related to aging of the instrumentation used (columns,
-  detector), but also changes in metabolite abundances/characteristics within
-  the sample, such as oxidation or other modifications of the sample's
-  metabolites which are expected to affect samples measured later in a sample
-  run more than those measured at the beginning. This bias can play a major role
+  such drifts can be related to aging of the instrumentation used
+  (columns, detector), but also to changes in metabolite abundances and
+  characteristics due to reactions and modifications, such as oxidation. These
+  changes are expected to affect more the samples measured later in a run
+  rather than the ones measured at the beginning. For this reason, this bias
+  can play a major role in large experiments bias can play a major role
   in large experiments measured over a long time range and is usually
   considered to affect individual metabolites (or metabolite groups)
   differently. For adjustment, moving average or linear regression-based
   approaches can be used. The latter can for example be performed using the
   `adjust_lm()` function from the `r Biocpkg("MetaboCoreUtils")` package.
-
-  [anna: I would slightly rephrase to make this point clearer and easier to follow. Reasons for such drifts can be related to aging of the instrumentation used (columns, detector), but also to changes in metabolite abundances and characteristics due to reactions and modifications, such as oxidation. These changes are expected to affect more the samples measured later in a run rather than the ones measured at the beginning. For this reason, this bias can play a major role in large experiments...]
 
 - Batch-related biases. These comprise any noise that is specific to a larger
   set of samples, which can be the set of samples measured in one LC-MS
@@ -1821,11 +1813,10 @@ achieved through the use of auxiliary information.
 
 Sample preparation biases can be evaluated using internal standards, depending
 however also on when they were added to the sample mixes during sample
-processing. Repeated measurements of QC samples [anna: this has been stated already and I feel it can be omitted at this point (usually a pool of the study
-samples)] on the other hand allows to estimate and correct for LC-MS specific
-biases. Also, proper planning of an experiment, such as measurement of study
-samples in random order, can largely avoid biases introduced by most of the
-above mentioned sources of variance.
+processing. Repeated measurements of QC samples on the other hand allows to
+estimate and correct for LC-MS specific biases. Also, proper planning of an
+experiment, such as measurement of study samples in random order, can largely
+avoid biases introduced by most of the above mentioned sources of variance.
 
 In this workflow we present some tools to assess data quality and evaluate need
 for normalization as well as options for normalization. For space reasons we are
@@ -1845,9 +1836,6 @@ ranging from half of the smallest measured value to the smallest measured value
 for a specific feature. The uniform distribution is defined with two parameters
 (minimum and maximum) and all values between them have an equal probability of
 being selected.
-
-[anna: I wouldn't start with PCA right away. First I would talk about the issues that we still have, then introduce PCA in the next section.
-Even though we preprocessed the data, some issues such as missing values still persist and need to be imputed. We assume that most of these missing values ...]
 
 Below we impute missing values with this approach and add the resulting data
 matrix as a new *assay* to our result object.
@@ -1950,7 +1938,7 @@ substantial number of *NAs* and allowed us to have a more consistent number of
 feature values per sample. This consistency aligns with our asspumption that
 every sample should have a similar amount of features detected. Additionally we
 observe that, on average, the signal distribution from the individual samples is
-very similar. [anna: I reprhased it a bit because I struggled a bit to understand what was meant. I hope I left the meaning that was first intended.]
+very similar. 
 
 An alternative way to evaluate differences in abundances between samples are
 *relative log abundance* (RLA) plots [@de_livera_normalizing_2012]. An RLA value
@@ -2139,17 +2127,15 @@ correct for biological variance and only technical.
 We compare the RLA plots before and after between-sample normalization to
 evaluate its impact on the data.
 
-[anna: for the figure below I would use the same settings as the RLA figure in the intensity evaluation section (e.g., legend in topright position, same width)]
-
-```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7, fig.width=5.5}
-par(mfrow = c(2, 1), mar = c(3.5, 4.5, 3, 1))
+```{r rla-plot after norm2, include = TRUE, fig.cap = "RLA plot before and after normalization. Note: outliers are not drawn.", fig.height= 7}
+par(mfrow = c(2, 1), mar = c(3.5, 4.5, 2.5, 1))
 
 boxplot(rowRla(assay(res, "raw_filled"), group = res$phenotype),
         cex = 0.5, pch = 16, ylab = "RLA", border = col_sample,
         col = paste0(col_sample, 80), cex.main = 1, outline = FALSE,
         xaxt = "n", main = "Raw data", boxwex = 1)
 grid(nx = NA, ny = NULL)
-legend("topleft", inset = c(0, -0.2), col = col_phenotype,
+legend("topright", inset = c(0, -0.2), col = col_phenotype,
        legend = names(col_phenotype), lty=1, lwd = 2, xpd = TRUE,
        ncol = 3, cex = 0.7, bty = "n")
 abline(h = 0, lty=3, lwd = 1, col = "black")
@@ -2169,14 +2155,12 @@ and medians for all samples are now closer to zero.
 
 ### Coefficient of variation
 
-[anna: for the next section I would first state that CV=RSD, as it already, then I would choose one of the two and keep it consistent throughout the whole section]
-
 We next evaluate the coefficient of variation (CV, also referred to as *relative
 standard deviation* RSD) for features across samples from either QC or study
 samples. In QC samples, the CV would represent technical noise, while in study
 samples it would include also expected biological differences. Thus,
 normalization should reduce the CV in QC samples, while only slightly reducing
-the CV in study samples. The CV (RSD) is calculated below using the `rowRsd()`
+the CV in study samples. The CV is calculated below using the `rowRsd()`
 function from the `r Biocpkg("MetaboCoreUtils")` package. By setting `mad =
 TRUE` we use a more robust calculation using the median absolute deviation
 instead of the standard deviation.
@@ -2204,21 +2188,20 @@ res_df <- data.frame(
     Study_norm = quantile(sample_res[, "Study_norm"], na.rm = TRUE)
 )
 
-cpt <- paste0("Table 6. Distribution of RSD values across samples for the raw and ",
+cpt <- paste0("Table 6. Distribution of CV values across samples for the raw and ",
               "normalized data.")
 pandoc.table(res_df, style = "rmarkdown", caption = cpt)
 ```
 
-The table above shows the distribution of the coefficient of variation (CV, RSD)
-for both raw and normalized data. The first column highlights the % of the data 
-which is below a given RDS value, e.g. 25% of the data has a RSD equal or lower
-than 0.04557 at the *QC_raw* data. As anticipated, the CV values for the QCs,
-which reflect technical variance, are lower compared to those for the study 
-samples, which include both technical and biological variance. Overall, minimal 
-disparity exists between the raw and normalized data, which is a positive 
-indication that the normalization process has not introduced bias into the
-dataset, but also reflects the little differences in average abundances between
-sample in the raw data.
+The table above shows the distribution of the CV for both raw and normalized 
+data. The first column highlights the % of the data  which is below a given CV
+value, e.g. 25% of the data has a CV equal or lower than 0.04557 at the *QC_raw*
+data. As anticipated, the CV values for the QCs, which reflect technical 
+variance, are lower compared to those for the study samples, which include both
+technical and biological variance. Overall, minimal disparity exists between the
+raw and normalized data, which is a positive indication that the normalization
+process has not introduced bias into the dataset, but also reflects the little
+differences in average abundances between sample in the raw data.
 
 ```{r}
 save(data, file = "data_afternorm.RData")
@@ -2316,7 +2299,7 @@ filter_dratio <- DratioFilter(threshold = 0.4,
                               qcIndex = res$phenotype == "QC",
                               studyIndex = res$phenotype != "QC",
                               mad = TRUE)
-res <- filterFeatures(res, filter = filter_dratio, assay = "norm")
+res <- filterFeatures(res, filter = filter_dratio, assay = "norm_imputed")
 ```
 
 The Dratio filter is a powerful tool to identify features that exhibit high
@@ -3039,7 +3022,7 @@ importance of proper experimental planning and the need to control for all
 potential confounding factors. For the present experiment, no disease-specific
 biomarker could be identified, but a life-style property of individuals
 suffering from this disease: coffee consumption was probably contraindicated
-to patients of the CVD group to reduce the risk of heart arrhythmias.
+to patients of the CVD group to reduce the risk of heart arrhythmia.
 
 We below plot the EIC for this feature highlighting the retention time at which
 the highest scoring MS2 spectra was recorded and create a mirror plot comparing
@@ -3077,9 +3060,9 @@ legend("topleft",
 ```
 
 The plot above clearly shows the higher signal for this feature in CTR compared
-to CVD samples. The signal is lower, but highly similar to each other for
-the QC samples suggesting absence of strong technical noise or biases in the raw
-data of this experiment [anna: I would reprhrase like this: The QC samples exhibit a lower but highly consistent signal, suggesting the absence of strong technical noise or biases in the raw data of this experiment.]. The vertical line indicates the retention time of the
+to CVD samples. The QC samples exhibit a lower but highly consistent signal,
+suggesting the absence of strong technical noise or biases in the raw data of
+this experiment. The vertical line indicates the retention time of the
 fragment spectrum with the best match against a reference spectrum. It has to be
 noted that, since the fragment spectra were measured in a separate LC-MS/MS
 experiment, this should only be considered as an indication of the approximate
@@ -3116,43 +3099,33 @@ documentation](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecul
 In alternative, or in addition, evidence for the potential matching chemical
 formula of a feature could be derived by evaluating the isotope pattern of its
 full MS1 scan. This could provide information on the isotope composition. Also
-for this, various functions such as the `itotopologues()` from the or `r
+for this, various functions such as the `isotopologues()` from the or `r
 Biocpkg("MetaboCoreUtils")` package or the functionality of the *envipat* R
 package [@loos_accelerated_2015] could be used.
 
 
 # Summary
 
-With the present tutorial we describe an end-to-end workflow for LC-MS based
-untargeted metabolomics experiments, conducted entirely within R using packages
-from the Bioconductor project or base R functionality. While other excellent
-softwares exist to perform similar analyses, the power of an R-based workflow is
-the possibility to adapt it to the individual data sets or research questions
-and to build reproducible workflows respectively documents [anna: I don't
-understand this sentence (I am sorry, it may be the lack of caffeine on my part
-XD)]. Due to space restrictions we don't provide a comprehensive listing of
+In this tutorial, we describe an end-to-end workflow for LC-MS-based untargeted
+metabolomics experiments, conducted entirely within R using packages from the
+Bioconductor project or base R functionality. While other excellent software
+exists to perform similar analyses, the power of an R-based workflow lies in
+its adaptability to individual data sets or research questions and its ability
+to build reproducible workflows and documentation.
+
+Due to space restrictions we don't provide a comprehensive listing of
 methodologies for the individual analysis steps. More advanced options or
 approaches would be available, e.g., for normalization of the data, which will
 however also be heavily dependent on the size and properties of the analyzed
 data set, as well as for annotation of the features.
 
-As a result we found in the present analysis a set of features with significant
-abundance differences between the compared groups. From these we could however
-only reliably annotate a single feature. This low proportion of annotated
-signals is however not uncommon for untargeted metabolomics experiments and
-reflects the need for more comprehensive and reliable reference annotation
-libraries. Differences observed in the present data sets are related to the
-lifestyle of individuals rather then to the pathological properties of the
-investigated disease.
-
-[anna: I would move things around for this last paragraph and rephrase it as
-follows: As a result, we found in the present analysis a set of features with
+As a result, we found in the present analysis a set of features with
 significant abundance differences between the compared groups. From these we
 could however only reliably annotate a single feature, that related to the
 lifestyle of individuals rather then to the pathological properties of the
 investigated disease. This low proportion of annotated signals is however not
 uncommon for untargeted metabolomics experiments and reflects the need for more
-comprehensive and reliable reference annotation libraries.]
+comprehensive and reliable reference annotation libraries.
 
 
 # Session information
@@ -3167,8 +3140,8 @@ sessionInfo()
 
 ## Aknowledgment 
 
-Thanks to Steffen Neumann for his continuous work to developp and maintain the
-XCMS software. ...
+Thanks to Steffen Neumann for his continuous work to develop and maintain the
+xcms software. ...
 
 ## Alignment using manually selected anchor peaks
 
